@@ -1,0 +1,178 @@
+/**
+ * @param { import("knex").Knex } knex
+ * @returns { Promise<void> }
+ */
+exports.up = async function(knex) {
+  // 1. ตารางซอย (SOIS)
+  await knex.schema.createTable('sois', (table) => {
+    table.increments('id').primary();
+    table.string('name').notNullable();
+  });
+
+  // 2. ตารางหอพัก (DORMITORIES)
+  await knex.schema.createTable('dormitories', (table) => {
+    table.increments('id').primary();
+    table.string('name').notNullable();
+    table.text('location');
+    table.integer('soi_id').unsigned().references('id').inTable('sois').onDelete('CASCADE');
+  });
+
+  // 3. ตารางลูกค้า (CUSTOMERS)
+  await knex.schema.createTable('customers', (table) => {
+    table.increments('id').primary();
+    table.string('username').unique();
+    table.string('email').unique();
+    table.string('password_hash');
+    table.string('google_id').unique();
+    table.string('line_id').unique();
+    table.string('phone');
+    table.string('room_number');
+    table.string('profile_image_url');
+    table.integer('dormitory_id').unsigned().references('id').inTable('dormitories').onDelete('SET NULL');
+  });
+
+  // 4. ตารางร้านค้า (MERCHANTS)
+  await knex.schema.createTable('merchants', (table) => {
+    table.increments('id').primary();
+    table.string('username').unique().notNullable();
+    table.string('password_hash').notNullable();
+    table.string('store_name').notNullable();
+    table.string('promptpay_id');
+    table.string('prefix', 10).notNullable();
+    table.integer('last_order_number').defaultTo(0);
+    table.boolean('is_open').defaultTo(false);
+    table.text('location');
+    table.string('store_image_url');
+  });
+
+  // 5. ตารางพนักงานส่งอาหารประจำร้าน (MERCHANT_RIDERS)
+  await knex.schema.createTable('merchant_riders', (table) => {
+    table.increments('id').primary();
+    table.string('username').unique().notNullable();
+    table.string('password_hash').notNullable();
+    table.string('full_name').notNullable();
+    table.string('phone');
+    table.boolean('is_active').defaultTo(true);
+    table.integer('merchant_id').unsigned().references('id').inTable('merchants').onDelete('CASCADE');
+  });
+
+  // 6. ตารางค่าจัดส่ง (DELIVERY_FEES)
+  await knex.schema.createTable('delivery_fees', (table) => {
+    table.increments('id').primary();
+    table.decimal('fee', 8, 2).notNullable();
+    table.integer('merchant_id').unsigned().references('id').inTable('merchants').onDelete('CASCADE');
+    table.integer('soi_id').unsigned().references('id').inTable('sois').onDelete('CASCADE');
+  });
+
+  // 7. ตารางเมนูอาหาร (MENU_ITEMS)
+  await knex.schema.createTable('menu_items', (table) => {
+    table.increments('id').primary();
+    table.string('name').notNullable();
+    table.text('description');
+    table.decimal('price', 8, 2).notNullable();
+    table.boolean('is_available').defaultTo(true);
+    table.string('image_url');
+    table.integer('merchant_id').unsigned().references('id').inTable('merchants').onDelete('CASCADE');
+  });
+
+  // 8. ตารางกลุ่มตัวเลือกเสริม (MENU_OPTION_GROUPS)
+  await knex.schema.createTable('menu_option_groups', (table) => {
+    table.increments('id').primary();
+    table.string('name').notNullable();
+    table.boolean('is_required').defaultTo(false);
+    table.boolean('allow_multiple').defaultTo(false);
+    table.integer('menu_item_id').unsigned().references('id').inTable('menu_items').onDelete('CASCADE');
+  });
+
+  // 9. ตารางตัวเลือกย่อย (MENU_OPTION_CHOICES)
+  await knex.schema.createTable('menu_option_choices', (table) => {
+    table.increments('id').primary();
+    table.string('name').notNullable();
+    table.decimal('extra_price', 8, 2).notNullable().defaultTo(0.00);
+    table.integer('option_group_id').unsigned().references('id').inTable('menu_option_groups').onDelete('CASCADE');
+  });
+
+  // 10. ตารางคำสั่งซื้อ (ORDERS)
+  await knex.schema.createTable('orders', (table) => {
+    table.increments('id').primary();
+    table.string('order_code').unique().notNullable();
+    table.integer('merchant_order_number').notNullable();
+    table.decimal('total_amount', 10, 2).notNullable();
+    table.decimal('delivery_fee', 8, 2).notNullable();
+    table.string('status').notNullable().defaultTo('PENDING_ACCEPT');
+    table.integer('customer_last_read_message_id');
+    table.integer('merchant_last_read_message_id');
+    table.string('delivery_room_number');
+    table.timestamp('created_at').defaultTo(knex.fn.now());
+    
+    // Foreign Keys
+    table.integer('customer_id').unsigned().references('id').inTable('customers').onDelete('SET NULL');
+    table.integer('merchant_id').unsigned().references('id').inTable('merchants').onDelete('CASCADE');
+    table.integer('delivery_dormitory_id').unsigned().references('id').inTable('dormitories').onDelete('SET NULL');
+    table.integer('rider_id').unsigned().references('id').inTable('merchant_riders').onDelete('SET NULL');
+  });
+
+  // 11. ตารางรายการอาหารในคำสั่งซื้อ (ORDER_ITEMS)
+  await knex.schema.createTable('order_items', (table) => {
+    table.increments('id').primary();
+    table.integer('quantity').notNullable().defaultTo(1);
+    table.decimal('unit_price', 8, 2).notNullable(); // Snapshot price
+    table.string('note');
+    table.boolean('is_completed').defaultTo(false);
+    table.integer('order_id').unsigned().references('id').inTable('orders').onDelete('CASCADE');
+    table.integer('menu_item_id').unsigned().references('id').inTable('menu_items').onDelete('SET NULL');
+  });
+
+  // 12. ตารางตัวเลือกเสริมในคำสั่งซื้อ (ORDER_ITEM_CHOICES)
+  await knex.schema.createTable('order_item_choices', (table) => {
+    table.increments('id').primary();
+    table.string('choice_name').notNullable(); // Snapshot choice name
+    table.decimal('extra_price', 8, 2).notNullable(); // Snapshot extra price
+    table.integer('order_item_id').unsigned().references('id').inTable('order_items').onDelete('CASCADE');
+    table.integer('menu_option_choice_id').unsigned().references('id').inTable('menu_option_choices').onDelete('SET NULL');
+  });
+
+  // 13. ตารางสลิปการโอนเงิน (PAYMENT_SLIPS)
+  await knex.schema.createTable('payment_slips', (table) => {
+    table.increments('id').primary();
+    table.string('image_url').notNullable();
+    table.string('ref_number').unique();
+    table.boolean('is_verified').defaultTo(false);
+    table.timestamp('created_at').defaultTo(knex.fn.now());
+    table.integer('order_id').unsigned().references('id').inTable('orders').onDelete('CASCADE');
+  });
+
+  // 14. ตารางข้อความแชท (MESSAGES)
+  await knex.schema.createTable('messages', (table) => {
+    table.increments('id').primary();
+    table.boolean('is_merchant_sender').notNullable();
+    table.string('sender_sub_role'); // 'STORE' หรือ 'RIDER'
+    table.string('message_type').notNullable().defaultTo('TEXT');
+    table.text('content_text');
+    table.integer('call_duration_seconds');
+    table.timestamp('created_at').defaultTo(knex.fn.now());
+    table.integer('order_id').unsigned().references('id').inTable('orders').onDelete('CASCADE');
+  });
+};
+
+/**
+ * @param { import("knex").Knex } knex
+ * @returns { Promise<void> }
+ */
+exports.down = async function(knex) {
+  // ลบแบบย้อนกลับ (Reverse Order) เพื่อป้องกัน Foreign Key Constraints Error
+  await knex.schema.dropTableIfExists('messages');
+  await knex.schema.dropTableIfExists('payment_slips');
+  await knex.schema.dropTableIfExists('order_item_choices');
+  await knex.schema.dropTableIfExists('order_items');
+  await knex.schema.dropTableIfExists('orders');
+  await knex.schema.dropTableIfExists('menu_option_choices');
+  await knex.schema.dropTableIfExists('menu_option_groups');
+  await knex.schema.dropTableIfExists('menu_items');
+  await knex.schema.dropTableIfExists('delivery_fees');
+  await knex.schema.dropTableIfExists('merchant_riders');
+  await knex.schema.dropTableIfExists('merchants');
+  await knex.schema.dropTableIfExists('customers');
+  await knex.schema.dropTableIfExists('dormitories');
+  await knex.schema.dropTableIfExists('sois');
+};
