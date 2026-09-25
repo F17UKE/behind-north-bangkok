@@ -5,13 +5,14 @@
 2. การมอบหมายคนส่งอาหารในคำสั่งซื้อ (`rider_id`)
 3. การสลับ Role ผู้ส่งฝั่งร้านค้า (`sender_sub_role`: `STORE` หรือ `RIDER`) ภายใต้ระบบแชทแบบ 2-Sided Watermark
 4. ระบบจัดเตรียมอาหารรายจาน (Kitchen Display System - KDS) ผ่านฟิลด์ `is_completed`
+5. **ระบบ Social Login สำหรับร้านค้า เพิ่มฟิลด์ `google_id` และ `line_id` ในตาราง `MERCHANTS` และอนุญาตให้รหัสผ่านเป็นค่าว่างได้**
 
 ---
 
 ## 1. Architectural Design Principles
 
 * **Role & Staff Separation:** แยกตารางบัญชีผู้ใช้หลัก `CUSTOMERS` และ `MERCHANTS` ขาดจากกัน และเพิ่มตารางลูก `MERCHANT_RIDERS` สำหรับพนักงานจัดส่งที่ร้านค้าสร้างขึ้น โดย Rider มี `username` และ `password_hash` ประจำตัวเพื่อเข้าสู่หน้ารับงานจัดส่งโดยเฉพาะ ไม่สามารถเข้าถึงแดชบอร์ดสรุปยอดขายหรือระบบแคตตาล็อกของร้านค้าได้
-* **Third-party Authentication:** รองรับ Local Authentication ควบคู่กับ Social Logins (Google OAuth 2.0 และ LINE Login) ในฝั่งลูกค้า โดยอนุญาตให้ `password_hash` เป็น `NULL`
+* **Third-party Authentication:** รองรับ Local Authentication ควบคู่กับ Social Logins (Google OAuth 2.0 และ LINE Login) ในฝั่งลูกค้า และฝั่งร้านค้า โดยอนุญาตให้ `password_hash` เป็น `NULL`
 * **Snapshot Pattern (Data Freezing):** แช่แข็งราคาอาหาร (`unit_price`), ราคาตัวเลือกเสริม (`extra_price`), และค่าส่ง (`delivery_fee`) ลงในตาราง Transaction ทุกครั้ง เพื่อป้องกันยอดเงินในบิลย้อนหลังคลาดเคลื่อนเมื่อ Master Data ถูกแก้ไข
 * **Order-level Rider Assignment:** เมื่ออาหารพร้อมส่ง ร้านค้าจะเลือกมอบหมายออเดอร์ให้คนขับผ่านคอลัมน์ `orders.rider_id` (FK -> `merchant_riders.id`)
 * **Unified Merchant Chat & Sub-role Tagging:** รักษาโครงสร้างห้องแชทแบบ 2 ขั้ว (Customer vs. Merchant) ด้วยแฟล็ก `is_merchant_sender` พร้อมเพิ่ม `sender_sub_role` (`STORE` / `RIDER`) เพื่อให้ฝั่งร้านค้าหรือคนส่งอาหารพิมพ์คุยกับลูกค้าได้ภายใต้ห้องเดียวกันโดยไม่กระทบระบบ Watermark
@@ -73,6 +74,8 @@ erDiagram
         int id PK
         varchar username UK
         varchar password_hash
+        varchar google_id UK
+        varchar line_id UK
         varchar store_name
         varchar promptpay_id
         varchar prefix
