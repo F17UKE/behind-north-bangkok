@@ -11,6 +11,14 @@ const server = http.createServer(app);
 app.use(cors({ origin: 'http://localhost:3000' }));
 app.use(express.json());
 
+const authRoutes = require('./src/routes/auth');
+const userRoutes = require('./src/routes/user');
+const merchantRoutes = require('./src/routes/merchant');
+
+app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/merchants', merchantRoutes);
+
 // ตั้งค่า Socket.io สำหรับระบบ Real-time Chat และ Notification
 const io = new Server(server, {
     cors: { origin: 'http://localhost:3000' }
