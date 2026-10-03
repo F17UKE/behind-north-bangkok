@@ -2,6 +2,11 @@
  * @param { import("knex").Knex } knex
  * @returns { Promise<void> }
  */
+
+// npx knex migrate:latest
+// npx knex seed:run
+// npx knex migrate:rollback --all
+
 exports.up = async function(knex) {
   // 1. ตารางซอย (SOIS)
   await knex.schema.createTable('sois', (table) => {

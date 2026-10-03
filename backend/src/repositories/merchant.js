@@ -8,6 +8,10 @@ const findMerchantById = async (id) => {
     return await knex('merchants').where({ id }).first();
 };
 
+const findMerchantByPrefix = async (prefix) => {
+    return await knex('merchants').where({ prefix }).first();
+};
+
 const createMerchant = async (merchantData) => {
     const [newMerchant] = await knex('merchants').insert(merchantData).returning('*');
     return newMerchant;
@@ -16,6 +20,7 @@ const createMerchant = async (merchantData) => {
 module.exports = {
     findMerchantByUsername,
     findMerchantById,
+    findMerchantByPrefix,
     createMerchant
 };
 

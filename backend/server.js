@@ -14,10 +14,12 @@ app.use(express.json());
 const authRoutes = require('./src/routes/auth');
 const userRoutes = require('./src/routes/user');
 const merchantRoutes = require('./src/routes/merchant');
+const orderRoutes = require('./src/routes/order');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/merchants', merchantRoutes);
+app.use('/api/orders', orderRoutes);
 
 // ตั้งค่า Socket.io สำหรับระบบ Real-time Chat และ Notification
 const io = new Server(server, {

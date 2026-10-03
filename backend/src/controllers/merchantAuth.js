@@ -2,15 +2,38 @@ const merchantRepo = require('../repositories/merchant');
 const { hashPassword, comparePassword } = require('../utils/hash');
 const { generateToken } = require('../utils/jwt');
 
-// 1. ฟังก์ชัน สมัครร้านค้า (Register)
+// ฟังก์ชันสุ่มตัวอักษรภาษาอังกฤษพิมพ์ใหญ่ 4 ตัว
+const generateRandomPrefix = () => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    let prefix = '';
+    for (let i = 0; i < 4; i++) {
+        prefix += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return prefix;
+};
+
 const register = async (req, res) => {
     try {
-        const { username, password, store_name, promptpay_id, prefix, location, store_image_url } = req.body;
+        // เอา prefix ออกจากการรับค่า req.body
+        const { username, password, store_name, promptpay_id, location, store_image_url } = req.body;
 
-        // เช็คว่ามีผู้ใช้นี้อยู่แล้วหรือไม่
         const existingMerchant = await merchantRepo.findMerchantByUsername(username);
         if (existingMerchant) {
             return res.status(400).json({ error: 'Username already exists' });
+        }
+
+        // 🟢 กระบวนการสุ่มและเช็ค Prefix ซ้ำ
+        let isUnique = false;
+        let generatedPrefix = '';
+
+        while (!isUnique) {
+            generatedPrefix = generateRandomPrefix();
+            // เช็คในฐานข้อมูลว่ามีคนใช้ prefix นี้ไปหรือยัง
+            const existingPrefix = await merchantRepo.findMerchantByPrefix(generatedPrefix);
+            
+            if (!existingPrefix) {
+                isUnique = true; // ถ้าไม่มีซ้ำ ให้ออกจาก Loop
+            }
         }
 
         const hashedPassword = await hashPassword(password);
@@ -20,11 +43,11 @@ const register = async (req, res) => {
             password_hash: hashedPassword,
             store_name,
             promptpay_id,
-            prefix,
+            prefix: generatedPrefix, // ใช้ prefix ที่สุ่มและไม่ซ้ำ
             location,
             store_image_url,
             last_order_number: 0,
-            is_open: false // กำหนดเป็น false ไปก่อน รอ Admin อนุมัติ
+            is_open: false 
         });
 
         delete newMerchant.password_hash;
@@ -39,7 +62,6 @@ const register = async (req, res) => {
     }
 };
 
-// 2. ฟังก์ชัน เข้าสู่ระบบร้านค้า (Login)
 const login = async (req, res) => {
     try {
         const { username, password } = req.body;
@@ -68,5 +90,4 @@ const login = async (req, res) => {
     }
 };
 
-// 3. ส่งออกทั้ง 2 ฟังก์ชัน
 module.exports = { register, login };
