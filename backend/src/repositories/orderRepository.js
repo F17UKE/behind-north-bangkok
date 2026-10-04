@@ -6,8 +6,8 @@ const createOrder = async (orderData) => {
 
     return await knex.transaction(async (trx) => {
         // 1. Snapshot: ค้นหาค่าส่ง
-        const dormitory = await trx('dormitories').where('id', dormitoryId).first();
-        const deliveryFeeRecord = await trx('delivery_fees')
+        const dormitory = await trx('DORMITORIES').where('id', dormitoryId).first();
+        const deliveryFeeRecord = await trx('DELIVERY_FEES')
             .where({ merchant_id: merchantId, soi_id: dormitory.soi_id })
             .first();
         const deliveryFee = deliveryFeeRecord ? parseFloat(deliveryFeeRecord.fee) : 0;
@@ -15,7 +15,7 @@ const createOrder = async (orderData) => {
         let totalAmount = deliveryFee;
 
         // 2. จัดการ Running Number ของร้านค้า (คิวออเดอร์)
-        const merchant = await trx('merchants').where('id', merchantId).first();
+        const merchant = await trx('MERCHANTS').where('id', merchantId).first();
         
         if (!merchant) {
             throw new Error(`Merchant with ID ${merchantId} not found in database.`);
@@ -27,12 +27,12 @@ const createOrder = async (orderData) => {
         const customOrderCode = merchant.prefix + "-" + String(newOrderNumber).padStart(4, '0');
 
         // อัปเดตคิวล่าสุดกลับไปที่ตารางร้านค้า
-        await trx('merchants')
+        await trx('MERCHANTS')
             .where('id', merchantId)
             .update({ last_order_number: newOrderNumber });
 
         // 3. สร้าง Order Header
-        const [order] = await trx('orders').insert({
+        const [order] = await trx('ORDERS').insert({
             order_code: customOrderCode, // <--- ใช้ตัวแปรที่สร้างใหม่ตรงนี้
             merchant_order_number: newOrderNumber,
             customer_id: customerId,
@@ -49,11 +49,11 @@ const createOrder = async (orderData) => {
 
         // 4. วนลูปบันทึก Items และทำ Snapshot ราคา
         for (const item of items) {
-            const menuItem = await trx('menu_items').where('id', item.menu_item_id).first();
+            const menuItem = await trx('MENU_ITEMS').where('id', item.menu_item_id).first();
             const unitPrice = parseFloat(menuItem.price);
             let itemTotal = unitPrice * item.quantity;
 
-            const [orderItem] = await trx('order_items').insert({
+            const [orderItem] = await trx('ORDER_ITEMS').insert({
                 order_id: order.id,
                 menu_item_id: item.menu_item_id,
                 quantity: item.quantity,
@@ -65,11 +65,11 @@ const createOrder = async (orderData) => {
             // บันทึก Choices (ถ้ามี)
             if (item.choices && item.choices.length > 0) {
                 for (const choiceId of item.choices) {
-                    const choice = await trx('menu_option_choices').where('id', choiceId).first();
+                    const choice = await trx('MENU_OPTION_CHOICES').where('id', choiceId).first();
                     const extraPrice = parseFloat(choice.extra_price);
                     itemTotal += (extraPrice * item.quantity);
 
-                    await trx('order_item_choices').insert({
+                    await trx('ORDER_ITEM_CHOICES').insert({
                         order_item_id: orderItem.id,
                         menu_option_choice_id: choiceId,
                         choice_name: choice.name,
@@ -81,7 +81,7 @@ const createOrder = async (orderData) => {
         }
 
         // 5. อัปเดต Total Amount กลับไป
-        await trx('orders').where('id', order.id).update({ total_amount: totalAmount });
+        await trx('ORDERS').where('id', order.id).update({ total_amount: totalAmount });
         order.total_amount = totalAmount;
 
         return order;
@@ -89,7 +89,7 @@ const createOrder = async (orderData) => {
 };
 
 const getOrderById = async (orderId) => {
-    return await knex('orders').where('id', orderId).first();
+    return await knex('ORDERS').where('id', orderId).first();
 };
 
 const updateOrderStatus = async (orderId, newStatus, riderId = null) => {
@@ -99,7 +99,7 @@ const updateOrderStatus = async (orderId, newStatus, riderId = null) => {
         updateData.rider_id = riderId;
     }
 
-    const [updatedOrder] = await knex('orders')
+    const [updatedOrder] = await knex('ORDERS')
         .where('id', orderId)
         .update(updateData)
         .returning('*');
