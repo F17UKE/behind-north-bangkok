@@ -1,19 +1,19 @@
 const knex = require('../db');
 
 const findMerchantByUsername = async (username) => {
-    return await knex('merchants').where({ username }).first();
+    return await knex('MERCHANTS').where({ username }).first();
 };
 
 const findMerchantById = async (id) => {
-    return await knex('merchants').where({ id }).first();
+    return await knex('MERCHANTS').where({ id }).first();
 };
 
 const findMerchantByPrefix = async (prefix) => {
-    return await knex('merchants').where({ prefix }).first();
+    return await knex('MERCHANTS').where({ prefix }).first();
 };
 
 const createMerchant = async (merchantData) => {
-    const [newMerchant] = await knex('merchants').insert(merchantData).returning('*');
+    const [newMerchant] = await knex('MERCHANTS').insert(merchantData).returning('*');
     return newMerchant;
 };
 
