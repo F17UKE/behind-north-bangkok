@@ -2,7 +2,7 @@ import "./globals.css";
 
 export const metadata = {
   title: "Behind NB",
-  description: "Behind North Bangkok"
+  description: "Hyperlocal P2P Food Delivery สำหรับชาว มจพ."
 };
 
 export default function RootLayout({ children }) {
