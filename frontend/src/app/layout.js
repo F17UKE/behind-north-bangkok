@@ -2,7 +2,7 @@ import "./globals.css";
 
 export const metadata = {
   title: "Behind NB",
-  description: "Behind North Bangkok"
+  description: "Behind North Bangkok",
 };
 
 export default function RootLayout({ children }) {

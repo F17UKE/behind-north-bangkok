@@ -1,110 +1,42 @@
-export const stores = [
-  {
-    id: "store-1",
-    name: "ครัวหลังมอ",
-    category: "อาหารตามสั่ง",
-    rating: 4.8,
-    reviews: 120,
-    time: "15-25 นาที",
-    open: true,
-    image:
-      "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=900&q=80"
-  },
-  {
-    id: "store-2",
-    name: "ข้าวมันไก่ลุงหนวด",
-    category: "ข้าว / อาหารจานเดียว",
-    rating: 4.7,
-    reviews: 98,
-    time: "10-20 นาที",
-    open: true,
-    image:
-      "https://images.unsplash.com/photo-1512058564366-18510be2db19?auto=format&fit=crop&w=900&q=80"
-  },
-  {
-    id: "store-3",
-    name: "ชานมหลังมหาลัย",
-    category: "เครื่องดื่ม",
-    rating: 4.6,
-    reviews: 87,
-    time: "5-15 นาที",
-    open: false,
-    image:
-      "https://images.unsplash.com/photo-1558857563-b371033873b8?auto=format&fit=crop&w=900&q=80"
-  }
+export const customerFoods = [
+  { id: 1, name: "ครัวหลังมอ", category: "อาหารตามสั่ง", rating: 4.8, price: 40, emoji: "🍛" },
+  { id: 2, name: "MIXE RUMM", category: "อาหาร / เครื่องดื่ม", rating: 4.7, price: 40, emoji: "🍜" },
+  { id: 3, name: "กะเพราหมู", category: "อาหารตามสั่ง", rating: 4.9, price: 45, emoji: "🥘" },
+  { id: 4, name: "ข้าวไก่ทอด", category: "ของทอด", rating: 4.6, price: 50, emoji: "🍗" },
 ];
 
-export const menuItems = [
-  {
-    id: 1,
-    storeId: "store-1",
-    name: "ข้าวกะเพราไก่",
-    price: 45,
-    available: true,
-    image:
-      "https://images.unsplash.com/photo-1515003197210-e0cd71810b5f?auto=format&fit=crop&w=800&q=80"
-  },
-  {
-    id: 2,
-    storeId: "store-1",
-    name: "ข้าวไข่เจียว",
-    price: 35,
-    available: true,
-    image:
-      "https://images.unsplash.com/photo-1510693206972-df098062cb71?auto=format&fit=crop&w=800&q=80"
-  },
-  {
-    id: 3,
-    storeId: "store-1",
-    name: "กะเพราหมูสับ",
-    price: 45,
-    available: true,
-    image:
-      "https://images.unsplash.com/photo-1601050690597-df0568f70950?auto=format&fit=crop&w=800&q=80"
-  },
-  {
-    id: 4,
-    storeId: "store-1",
-    name: "ไข่ดาว",
-    price: 10,
-    available: false,
-    image:
-      "https://images.unsplash.com/photo-1525351484163-7529414344d8?auto=format&fit=crop&w=800&q=80"
-  }
+export const customerMenu = [
+  { id: 1, name: "ข้าวกะเพราไก่", price: 45, emoji: "🌶️" },
+  { id: 2, name: "ข้าวไข่เจียว", price: 35, emoji: "🍳" },
+  { id: 3, name: "กะเพราหมูสับ", price: 45, emoji: "🥘" },
+  { id: 4, name: "ไข่ดาว", price: 10, emoji: "🍳" },
 ];
 
-export const orders = [
-  {
-    id: "#ORD001",
-    customer: "นักศึกษา มจพ.",
-    store: "ครัวหลังมอ",
-    total: 90,
-    status: "กำลังทำอาหาร",
-    time: "10:25"
-  },
-  {
-    id: "#ORD002",
-    customer: "Petchtae",
-    store: "ครัวหลังมอ",
-    total: 75,
-    status: "รอรับออเดอร์",
-    time: "10:20"
-  },
-  {
-    id: "#ORD003",
-    customer: "Thanakrit",
-    store: "ข้าวมันไก่ลุงหนวด",
-    total: 120,
-    status: "เสร็จสิ้น",
-    time: "10:15"
-  }
+export const initialOrders = [
+  { id: "#ORD001", store: "ครัวหลังมอ", items: ["ข้าวกะเพราไก่ x1", "ข้าวไข่เจียว x1"], total: 90, status: "PREPARING", date: "Today, 10:25" },
+  { id: "#ORD000", store: "ครัวหลังมอ", items: ["ข้าวกะเพราไก่ x1"], total: 55, status: "COMPLETED", date: "Yesterday, 12:20" },
 ];
 
-export const stats = {
-  todayOrders: 24,
-  todayRevenue: 1560,
-  totalUsers: 1254,
-  totalStores: 86,
-  totalOrders: 432,
-  totalRevenue: 28560
+export const merchantOrdersSeed = [
+  { id: "#ORD001", customer: "นักศึกษา มจพ.", total: 90, status: "PREPARING", items: ["ข้าวกะเพราไก่ x1", "ข้าวไข่เจียว x1"], time: "10:25" },
+  { id: "#ORD002", customer: "Petchtae", total: 75, status: "PENDING_ACCEPT", items: ["ข้าวกะเพราไก่ x1", "น้ำเปล่า x1"], time: "10:20" },
+  { id: "#ORD003", customer: "Thanakrit", total: 120, status: "READY_FOR_DELIVERY", items: ["ข้าวหมูกรอบ x2"], time: "10:15" },
+];
+
+export const adminUsers = [
+  { id: 1, name: "นักศึกษา มจพ.", phone: "084-444-4444", role: "User", status: "active" },
+  { id: 2, name: "Petchtae", phone: "081-222-3333", role: "Merchant", status: "active" },
+  { id: 3, name: "Thanakrit", phone: "081-333-4444", role: "User", status: "active" },
+  { id: 4, name: "Napat", phone: "082-444-5555", role: "User", status: "blocked" },
+  { id: 5, name: "บ้านหลังมอ", phone: "083-555-6666", role: "Merchant", status: "active" },
+  { id: 6, name: "Chonlatit", phone: "085-555-1212", role: "User", status: "active" },
+];
+
+export const statusLabel = {
+  PENDING_ACCEPT: "รอร้านรับออเดอร์",
+  PREPARING: "กำลังเตรียมอาหาร",
+  READY_FOR_DELIVERY: "พร้อมจัดส่ง",
+  IN_DELIVERY: "กำลังจัดส่ง",
+  COMPLETED: "เสร็จสิ้น",
+  CANCELLED: "ยกเลิก",
 };
