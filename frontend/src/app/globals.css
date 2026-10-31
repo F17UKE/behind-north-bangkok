@@ -683,3 +683,113 @@ body { width: 100%; }
   .mobile-app.orange .food-photo { aspect-ratio: 1.45 / 1; }
   .mobile-app.orange .bottom-nav.orange { width: min(720px,calc(100% - 64px)); }
 }
+
+/* Shared minimalist type and spacing system across customer, merchant and admin. */
+@font-face {
+  font-family: "Anuphan UI";
+  src: url("/fonts/Anuphan-Variable.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 100 700;
+  font-display: swap;
+}
+:root {
+  --app-font: "Anuphan UI", "Leelawadee UI", "Segoe UI", sans-serif;
+  --app-text: #252a31;
+  --app-muted: #747d87;
+  --app-line: #e7e9ec;
+  --app-panel: #fff;
+  --app-body-size: clamp(15px, calc(14px + .2vw), 16px);
+  --app-caption-size: 13px;
+  --app-title-size: clamp(20px, calc(18px + .6vw), 26px);
+}
+body, button, input, select, textarea { font-family: var(--app-font); }
+.mobile-app:is(.orange,.merchant,.admin) { color: var(--app-text); font-family: var(--app-font); font-size: var(--app-body-size); }
+.mobile-app:is(.orange,.merchant,.admin) :is(.mobile-page,.merchant-page,.admin-page) { color: var(--app-text); font-family: var(--app-font); font-size: var(--app-body-size); line-height: 1.5; }
+.mobile-app.merchant .merchant-page,
+.mobile-app.admin .admin-page { width: min(100%, 1320px); padding: 0 clamp(20px, 4vw, 54px) 120px; background: #f7f8f9; box-shadow: none; }
+.mobile-app.merchant,.mobile-app.admin { background: #f2f4f5; }
+
+/* Shared headers, section titles and readable supporting copy. */
+.mobile-app:is(.orange,.merchant,.admin) .topbar { height: 72px; padding: 0 4px; }
+.mobile-app:is(.orange,.merchant,.admin) .topbar-title strong { font-size: clamp(17px, calc(16px + .35vw), 20px); font-weight: 700; line-height: 1.3; }
+.mobile-app:is(.orange,.merchant,.admin) .topbar-title small { font-size: 13px; line-height: 1.35; }
+.mobile-app:is(.orange,.merchant,.admin) .topbar-btn { font-size: 28px; }
+.mobile-app:is(.orange,.merchant,.admin) .section-header { margin: 22px 0 14px; }
+.mobile-app:is(.orange,.merchant,.admin) .section-header b { font-size: clamp(19px, calc(18px + .4vw), 23px); font-weight: 700; }
+.mobile-app:is(.orange,.merchant,.admin) .section-header button,
+.mobile-app:is(.orange,.merchant,.admin) .section-header > span { font-size: 14px; }
+.mobile-app:is(.orange,.merchant,.admin) .search-bar { min-height: 48px; padding: 0 13px; }
+.mobile-app:is(.orange,.merchant,.admin) .search-bar input { font-size: 15px; }
+.mobile-app:is(.orange,.merchant,.admin) .filter-scroll { gap: 8px; padding: 12px 0 16px; }
+.mobile-app:is(.orange,.merchant,.admin) .filter-scroll button,
+.mobile-app:is(.orange,.merchant,.admin) .merchant-quick button { min-height: 40px; padding: 8px 14px; font-size: 13px; }
+.mobile-app:is(.orange,.merchant,.admin) .bottom-nav { padding: 10px 8px calc(12px + env(safe-area-inset-bottom)); }
+.mobile-app:is(.orange,.merchant,.admin) .bottom-nav button { font-size: 21px; }
+.mobile-app:is(.orange,.merchant,.admin) .bottom-nav small { font-size: 12px; }
+.mobile-app:is(.orange,.merchant,.admin) .primary-btn,
+.mobile-app:is(.orange,.merchant,.admin) .secondary-btn,
+.mobile-app:is(.orange,.merchant,.admin) .accept-button { min-height: 46px; padding: 10px 16px; font-size: 15px; font-weight: 650; }
+
+/* Basket, order tracking, profile, shop and admin text sizes. */
+.mobile-app:is(.orange,.merchant,.admin) :is(.cart-shop b,.cart-row-info b,.recent-main b,.delivery-step b,.restaurant-line b,.merchant-recent b,.order-head b,.admin-user-row b,.admin-action-card b,.profile-menu button,.setting-profile b,.setting-row,.setting-row button,.notice-card b,.payment-card>b) { font-size: 16px; line-height: 1.4; font-weight: 650; }
+.mobile-app:is(.orange,.merchant,.admin) :is(.merchant-profile b,.admin-header b,.profile-text b,.contact-list b,.chat-panel-top b,.sales-head,.delivery-fee-box h3,.detail-profile h2) { font-size: 16px; line-height: 1.4; font-weight: 650; }
+.mobile-app:is(.orange,.merchant,.admin) :is(.cart-shop small,.cart-row-info small,.recent-main small,.recent-main span,.delivery-step small,.restaurant-line small,.order-head small,.merchant-recent small,.admin-user-row small,.admin-user-row>span,.admin-action-card small,.setting-profile small,.notice-card small,.detail-stats small) { font-size: 13px; line-height: 1.5; }
+.mobile-app:is(.orange,.merchant,.admin) :is(.merchant-profile small,.admin-header small,.profile-text small,.contact-list small,.contact-list span,.chat-panel-top small,.sales-head span,.sales-card>small,.delivery-fee-box small) { font-size: 13px; line-height: 1.5; }
+.mobile-app:is(.orange,.merchant,.admin) :is(.summary>div,.summary-item,.simple-line,.payment-card>div,.order-items,.detail-contact,.notice-card p,.field,.check-line,.merchant-quick,.merchant-order-card,.contact-list b,.chat-panel-top b,.chat-bubble,.chat-compose input) { font-size: 14px; line-height: 1.55; }
+.mobile-app:is(.orange,.merchant,.admin) :is(.summary .total,.summary .total strong,.delivery-order-head strong,.order-head strong,.merchant-recent strong,.orange-text) { font-size: 18px; }
+.mobile-app:is(.orange,.merchant,.admin) :is(.field b,.payment-card>b,.summary-title,.status-pill,.accept-button,.detail-buttons button,.logout-admin,.topbar-cart) { font-size: 14px; }
+.mobile-app:is(.orange,.merchant,.admin) :is(.field input,.delivery-fee-box input,.chat-compose input) { min-height: 46px; padding: 10px 12px; font-size: 16px; }
+.mobile-app:is(.orange,.merchant,.admin) .cart-row,
+.mobile-app:is(.orange,.merchant,.admin) .recent-order-row,
+.mobile-app:is(.orange,.merchant,.admin) .merchant-recent { gap: 12px; padding: 14px 0; }
+.mobile-app:is(.orange,.merchant,.admin) .cart-row-info,
+.mobile-app:is(.orange,.merchant,.admin) .recent-main { min-width: 0; }
+.mobile-app:is(.orange,.merchant,.admin) .qty { gap: 9px; }
+.mobile-app:is(.orange,.merchant,.admin) .qty button { width: 34px; height: 34px; font-size: 17px; }
+.mobile-app:is(.orange,.merchant,.admin) .qty span { min-width: 16px; font-size: 14px; }
+.mobile-app:is(.orange,.merchant,.admin) .food-thumb { width: 48px; height: 48px; border-radius: 12px; }
+
+/* Keep all role cards quiet and consistent while preserving role accents. */
+.mobile-app:is(.orange,.merchant,.admin) :is(.order-card,.summary-card-big,.payment-card,.form-card,.delivery-card,.profile-card-top,.profile-menu,.notice-card,.merchant-order-card,.merchant-stats>div,.admin-stats>div,.sales-card,.delivery-fee-box,.detail-contact,.detail-stats>div,.admin-action-card,.merchant-chat-layout) { border: 1px solid var(--app-line); border-radius: 16px; background: var(--app-panel); box-shadow: 0 4px 18px #1d27320a; }
+.mobile-app:is(.orange,.merchant,.admin) .merchant-order-card,
+.mobile-app:is(.orange,.merchant,.admin) .notice-card,
+.mobile-app:is(.orange,.merchant,.admin) .admin-action-card { padding: 16px; }
+.mobile-app:is(.orange,.merchant,.admin) .merchant-stats { gap: 12px; margin: 12px 0 18px; }
+.mobile-app:is(.orange,.merchant,.admin) .merchant-stats div,
+.mobile-app:is(.orange,.merchant,.admin) .admin-stats div,
+.mobile-app:is(.orange,.merchant,.admin) .detail-stats div { padding: 16px; }
+.mobile-app:is(.orange,.merchant,.admin) :is(.merchant-stats b,.admin-stats b,.detail-stats b) { font-size: clamp(23px, calc(21px + .5vw), 30px); }
+.mobile-app:is(.orange,.merchant,.admin) :is(.merchant-stats small,.merchant-stats em,.admin-stats small,.admin-stats em) { font-size: 13px; }
+.mobile-app:is(.orange,.merchant,.admin) .store-info b { font-size: 20px; }
+.mobile-app:is(.orange,.merchant,.admin) .store-info small { font-size: 14px; }
+.mobile-app:is(.orange,.merchant,.admin) .profile-menu button,
+.mobile-app:is(.orange,.merchant,.admin) .setting-row { min-height: 54px; padding: 14px 15px; }
+.mobile-app:is(.orange,.merchant,.admin) .list-title { margin: 18px 0 12px; font-size: 16px; }
+.mobile-app:is(.orange,.merchant,.admin) .admin-user-row { gap: 12px; padding: 14px 2px; }
+.mobile-app:is(.orange,.merchant,.admin) .admin-detail-head { padding: 14px 16px; }
+.mobile-app:is(.orange,.merchant,.admin) .admin-detail-head b { font-size: 17px; }
+.mobile-app:is(.orange,.merchant,.admin) .detail-profile h2 { font-size: 20px; }
+.mobile-app:is(.orange,.merchant,.admin) .detail-contact { padding: 15px; gap: 9px; }
+.mobile-app:is(.orange,.merchant,.admin) .detail-buttons { gap: 10px; margin-top: 14px; }
+.mobile-app:is(.orange,.merchant,.admin) .chart { height: 180px; }
+.mobile-app:is(.orange,.merchant,.admin) .profile-text { padding: 35px 14px 14px; }
+
+@media (max-width: 479px) {
+  .mobile-app.merchant .merchant-page,
+  .mobile-app.admin .admin-page { padding: 0 16px 108px; }
+  .mobile-app:is(.orange,.merchant,.admin) .section-header { margin: 18px 0 12px; }
+  .mobile-app:is(.orange,.merchant,.admin) :is(.cart-shop b,.cart-row-info b,.recent-main b,.delivery-step b,.restaurant-line b,.merchant-recent b,.order-head b,.admin-user-row b,.admin-action-card b,.profile-menu button,.setting-row) { font-size: 15px; }
+  .mobile-app:is(.orange,.merchant,.admin) :is(.cart-shop small,.cart-row-info small,.recent-main small,.recent-main span,.delivery-step small,.restaurant-line small,.order-head small,.merchant-recent small,.admin-user-row small,.admin-user-row>span,.admin-action-card small) { font-size: 12px; }
+  .mobile-app:is(.orange,.merchant,.admin) .bottom-nav small { font-size: 11px; }
+}
+@media (min-width: 768px) {
+  .mobile-app.merchant .merchant-page,
+  .mobile-app.admin .admin-page { width: min(100%, 1320px); padding-inline: clamp(32px, 5vw, 64px); }
+  .mobile-app:is(.orange,.merchant,.admin) .merchant-chat-layout { min-height: 560px; }
+  .mobile-app:is(.orange,.merchant,.admin) .contact-list { max-height: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mobile-app:is(.orange,.merchant,.admin) *,
+  .mobile-app:is(.orange,.merchant,.admin) *::before,
+  .mobile-app:is(.orange,.merchant,.admin) *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
+}
