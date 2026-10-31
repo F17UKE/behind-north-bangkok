@@ -54,3 +54,30 @@ exports.sendMessage = async (req, res) => {
     res.status(500).json({ error: 'Failed to send message' });
   }
 };
+
+// ฟังก์ชันใหม่สำหรับบันทึกการโทรแยกต่างหาก
+exports.logCall = async (req, res) => {
+  try {
+    const { order_id } = req.params;
+    // รับค่าจาก Frontend ตรงๆ แบบเดียวกับ sendMessage ที่คุณมีอยู่
+    const { 
+      isMerchantSender, 
+      senderSubRole, 
+      callStatus, 
+      callDurationSeconds 
+    } = req.body;
+
+    const newCallLog = await chatRepository.saveMessage({
+      isMerchantSender: isMerchantSender,
+      senderSubRole: senderSubRole, // 'STORE' หรือ 'RIDER' หรือ null
+      messageType: callStatus,      // 'CALL_STARTED', 'CALL_ENDED', 'CALL_MISSED'
+      contentText: `Call log: ${callStatus}`,
+      callDurationSeconds: callDurationSeconds || 0,
+      orderId: order_id
+    });
+
+    res.status(201).json({ success: true, data: newCallLog });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
