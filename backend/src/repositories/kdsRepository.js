@@ -27,11 +27,12 @@ class KDSRepository {
             .join('MENU_ITEMS', 'ORDER_ITEMS.menu_item_id', 'MENU_ITEMS.id')
             .where('ORDER_ITEMS.order_id', orderId);
 
-        // ดึง choices สำหรับแต่ละ item (ลดการ Query ซ้ำซ้อนด้วย WHERE IN)
+        // ดึง choices สำหรับแต่ละ item 
         const itemIds = items.map(item => item.id);
         const allChoices = itemIds.length > 0 
             ? await knex('ORDER_ITEM_CHOICES')
-                .select('order_item_id', 'choice_name')
+                // เพิ่มการ select 'id' (Primary Key ของตาราง ORDER_ITEM_CHOICES)
+                .select('id', 'order_item_id', 'choice_name') 
                 .whereIn('order_item_id', itemIds)
             : [];
 
@@ -41,7 +42,11 @@ class KDSRepository {
                 ...item,
                 choices: allChoices
                     .filter(c => c.order_item_id === item.id)
-                    .map(c => c.choice_name)
+                    // เปลี่ยนจากการคืนค่าแค่ String เป็นการคืนค่า Object ที่มี id และ name
+                    .map(c => ({
+                        id: c.id, 
+                        name: c.choice_name
+                    }))
             };
         });
     }
