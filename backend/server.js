@@ -22,6 +22,8 @@ const kdsRoutes = require('./src/routes/kds');
 const chatRoutes = require('./src/routes/chat'); // [เพิ่ม] Route สำหรับระบบแชท
 const menuRoutes = require('./src/routes/menu');
 const merchantManagementRoutes = require('./src/routes/merchantManagement');
+const riderManagementRoutes = require('./src/routes/riderManagement');
+const orderWorkflowRoute = require('./src/routes/orderWorkflow');
 
 // 2. Mount Routes
 app.use('/api/auth', authRoutes);
@@ -33,6 +35,8 @@ app.use('/api/merchants/kds', kdsRoutes);
 app.use('/api/orders', chatRoutes); // [เพิ่ม] ใช้งาน Chat API (เช่น /api/orders/:order_id/messages)
 app.use('/api/menus', menuRoutes);
 app.use('/api/merchant-management',merchantManagementRoutes);
+app.use('/api/merchant-management/riders',riderManagementRoutes);
+app.use('/api/order-workflow',orderWorkflowRoute);
 
 // 3. ตั้งค่า Socket.io สำหรับระบบ Real-time Chat และ Notification
 const io = new Server(server, {
