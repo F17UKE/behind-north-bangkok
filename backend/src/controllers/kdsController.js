@@ -1,7 +1,6 @@
 // backend/src/controllers/kdsController.js
 const KDSRepository = require('../repositories/kdsRepository');
 const knex = require('../db');
-// สมมติว่าคุณมี StateMachine Utility อยู่ที่ src/utils/stateMachine.js ตามโครงสร้าง[cite: 5]
 const stateMachine = require('../utils/stateMachine'); 
 
 // 1. ดึงออเดอร์ในครัวพร้อมรายละเอียดอาหาร
@@ -52,15 +51,32 @@ const completeSingleItem = async (req, res) => {
         let statusChanged = false;
 
         if (uncompletedCount === 0) {
-            // ปรับสถานะเป็น READY_FOR_DELIVERY อัตโนมัติ[cite: 6]
-            // หากคุณมี validateStateTransition ใน util ให้ใช้ก่อน
+            // ปรับสถานะเป็น READY_FOR_DELIVERY อัตโนมัติ
             await KDSRepository.updateOrderStatus(orderId, 'READY_FOR_DELIVERY', trx);
             statusChanged = true;
         }
 
         await trx.commit();
         
-        // TODO: ยิง Socket.io อัปเดตสถานะไปที่ลูกค้า (และหน้า Rider) หาก statusChanged === true
+        // ยิง Socket.io อัปเดตสถานะไปที่ลูกค้า, ร้านค้า และ KDS Display
+        const io = req.app.get('io');
+        if (io) {
+            if (statusChanged) {
+                io.to(`order_${orderId}`).emit('ORDER_STATUS_UPDATED', {
+                    order_id: Number(orderId),
+                    status: 'READY_FOR_DELIVERY',
+                    updated_by: 'MERCHANT',
+                    updated_at: new Date()
+                });
+            }
+            // แจ้งให้หน้า KDS อัปเดตเครื่องหมายเสร็จของจานอาหาร
+            io.to(`merchant_${merchantId}_kds`).emit('KDS_ITEM_COMPLETED', {
+                order_id: Number(orderId),
+                item_id: Number(itemId),
+                is_completed: true,
+                is_order_ready: statusChanged
+            });
+        }
         
         res.status(200).json({ 
             message: 'Item marked as completed',
@@ -93,7 +109,7 @@ const completeEntireOrder = async (req, res) => {
             return res.status(400).json({ error: `Cannot complete order in status: ${order.status}` });
         }
 
-        // อัปเดตทุกจานเป็น true ทันที[cite: 6]
+        // อัปเดตทุกจานเป็น true ทันที
         await KDSRepository.markAllItemsAsCompleted(orderId, trx);
         
         // เปลี่ยนสถานะเป็น READY_FOR_DELIVERY
@@ -101,7 +117,20 @@ const completeEntireOrder = async (req, res) => {
 
         await trx.commit();
 
-        // TODO: ยิง Socket.io อัปเดตสถานะไปที่ลูกค้า
+        // ยิง Socket.io อัปเดตสถานะไปที่ลูกค้า และ KDS
+        const io = req.app.get('io');
+        if (io) {
+            io.to(`order_${orderId}`).emit('ORDER_STATUS_UPDATED', {
+                order_id: Number(orderId),
+                status: 'READY_FOR_DELIVERY',
+                updated_by: 'MERCHANT',
+                updated_at: new Date()
+            });
+            io.to(`merchant_${merchantId}_kds`).emit('KDS_ORDER_COMPLETED', {
+                order_id: Number(orderId),
+                status: 'READY_FOR_DELIVERY'
+            });
+        }
 
         res.status(200).json({ message: 'Entire order marked as ready for delivery' });
 

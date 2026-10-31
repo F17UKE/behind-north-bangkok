@@ -43,6 +43,19 @@ exports.updateOrderStatus = async (req, res) => {
 
     // 3. อัปเดตสถานะ
     const updated = await repo.updateOrderStatus(order_id, status);
+
+    // 4. ส่งสัญญาณแจ้งเตือน Real-time ให้ลูกค้าและร้านค้าทราบ
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`order_${order_id}`).emit('ORDER_STATUS_UPDATED', {
+        order_id: Number(order_id),
+        status: status,
+        rider_id: riderId,
+        updated_by: 'RIDER',
+        updated_at: new Date()
+      });
+    }
+
     res.status(200).json({ success: true, data: updated[0] });
 
   } catch (error) {

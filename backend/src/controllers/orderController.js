@@ -12,6 +12,15 @@ const createOrder = async (req, res) => {
     };
 
     const newOrder = await orderRepo.createOrder(orderData);
+
+    // ส่งสัญญาณแจ้งเตือนไปยังห้องร้านค้าทันทีเมื่อมีออเดอร์ใหม่เข้ามา
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`merchant_${newOrder.merchant_id}`).emit('NEW_ORDER_RECEIVED', {
+        order: newOrder
+      });
+    }
+
     return res.status(201).json({ success: true, data: newOrder });
   } catch (error) {
     console.error('Create Order Error:', error);
@@ -142,12 +151,21 @@ const changeOrderStatus = async (req, res) => {
     const io = req.app.get('io');
     if (io) {
       io.to(`order_${order_id}`).emit('ORDER_STATUS_UPDATED', {
-        order_id,
+        order_id: Number(order_id),
         status: nextState,
         rider_id: effectiveRiderId,
         updated_by: userRole,
         updated_at: new Date()
       });
+
+      // หากมีการมอบหมาย Rider ให้แจ้งเตือนไปยัง Rider ห้องส่วนตัวด้วย
+      if (nextState === ORDER_STATES.READY_FOR_DELIVERY && effectiveRiderId) {
+        io.to(`rider_${effectiveRiderId}`).emit('RIDER_ORDER_ASSIGNED', {
+          order_id: Number(order_id),
+          status: nextState,
+          rider_id: effectiveRiderId
+        });
+      }
     }
 
     return res.status(200).json({ success: true, data: updatedOrder });
