@@ -24,8 +24,11 @@ const menuRoutes = require('./src/routes/menu');
 const merchantManagementRoutes = require('./src/routes/merchantManagement');
 const riderManagementRoutes = require('./src/routes/riderManagement');
 const orderWorkflowRoute = require('./src/routes/orderWorkflow');
+const riderBoardRoute = require('./src/routes/riderBoard');
+const masterDataRoute = require('./src/routes/masterData');
 
 // 2. Mount Routes
+app.use('/api', masterDataRoute);
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/merchants', merchantRoutes);
@@ -37,6 +40,7 @@ app.use('/api/menus', menuRoutes);
 app.use('/api/merchant-management',merchantManagementRoutes);
 app.use('/api/merchant-management/riders',riderManagementRoutes);
 app.use('/api/order-workflow',orderWorkflowRoute);
+app.use('/api/riders', riderBoardRoute);
 
 // 3. ตั้งค่า Socket.io สำหรับระบบ Real-time Chat และ Notification
 const io = new Server(server, {

@@ -8,5 +8,7 @@ router.use(verifyToken);
 router.get('/orders/:order_id/messages', chatController.getChatHistory);
 router.post('/:order_id/messages', chatController.sendMessage);
 router.put('/orders/:order_id/messages/read', chatController.updateWatermark);
+// บันทึกประวัติการโทร
+router.post('/orders/:order_id/calls/log', chatController.logCall);
 
 module.exports = router;

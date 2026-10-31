@@ -35,7 +35,7 @@ class ChatRepository {
 
   // สำหรับลบข้อความที่อายุเกิน 24 ชั่วโมง (Data Purging Policy)[cite: 6]
   async purgeOldMessages() {
-    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const twentyFourHoursAgo = new Date(Date.now() - (24 * 60 * 60 * 1000));
     return await knex('MESSAGES')
       .where('created_at', '<', twentyFourHoursAgo)
       .del();
