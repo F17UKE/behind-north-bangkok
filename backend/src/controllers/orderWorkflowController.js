@@ -1,5 +1,19 @@
 const repo = require('../repositories/orderWorkflowRepository');
 
+// Helper สำหรับยิง Socket Event
+const emitOrderStatus = (req, orderId, status, extra = {}) => {
+  const io = req.app.get('io');
+  if (io) {
+    io.to(`order_${orderId}`).emit('ORDER_STATUS_UPDATED', {
+      order_id: Number(orderId),
+      status,
+      updated_by: req.user?.role,
+      updated_at: new Date(),
+      ...extra
+    });
+  }
+};
+
 // --- ฝั่งลูกค้า (Customer) ---
 exports.getCustomerOrders = async (req, res) => {
   try {
@@ -25,6 +39,8 @@ exports.cancelOrder = async (req, res) => {
     }
 
     const updated = await repo.updateOrderStatus(order_id, 'CANCELLED_BY_CUSTOMER');
+    emitOrderStatus(req, order_id, 'CANCELLED_BY_CUSTOMER');
+
     res.status(200).json({ success: true, data: updated[0] });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -56,6 +72,8 @@ exports.acceptOrder = async (req, res) => {
     }
 
     const updated = await repo.updateOrderStatus(order_id, 'PENDING_PAYMENT');
+    emitOrderStatus(req, order_id, 'PENDING_PAYMENT');
+
     res.status(200).json({ success: true, data: updated[0] });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -75,6 +93,8 @@ exports.rejectOrder = async (req, res) => {
     }
 
     const updated = await repo.updateOrderStatus(order_id, 'REJECTED_BY_MERCHANT');
+    emitOrderStatus(req, order_id, 'REJECTED_BY_MERCHANT');
+
     res.status(200).json({ success: true, data: updated[0] });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -96,6 +116,18 @@ exports.assignRider = async (req, res) => {
     }
 
     const updated = await repo.assignRider(order_id, rider_id);
+    emitOrderStatus(req, order_id, 'READY_FOR_DELIVERY', { rider_id });
+
+    // แจ้งเตือนไปยัง Dispatch Board ของ Rider โดยเฉพาะ
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`rider_${rider_id}`).emit('RIDER_ORDER_ASSIGNED', {
+        order_id: Number(order_id),
+        status: 'READY_FOR_DELIVERY',
+        rider_id
+      });
+    }
+
     res.status(200).json({ success: true, data: updated[0] });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });

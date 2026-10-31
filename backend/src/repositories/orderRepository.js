@@ -14,8 +14,12 @@ const createOrder = async (orderData) => {
 
         let totalAmount = deliveryFee;
 
-        // 2. จัดการ Running Number ของร้านค้า (คิวออเดอร์)
-        const merchant = await trx('MERCHANTS').where('id', merchantId).first();
+        // 2. จัดการ Running Number ของร้านค้า (คิวออเดอร์) แบบ Row-Level Locking (forUpdate)
+        // เพื่อป้องกัน Race Condition เมื่อมีลูกค้ากดสั่งซื้อพร้อมกันหลายคน
+        const merchant = await trx('MERCHANTS')
+            .where('id', merchantId)
+            .forUpdate()
+            .first();
         
         if (!merchant) {
             throw new Error(`Merchant with ID ${merchantId} not found in database.`);
@@ -23,17 +27,17 @@ const createOrder = async (orderData) => {
 
         const newOrderNumber = (merchant.last_order_number || 0) + 1;
 
-        // สร้าง order_code รูปแบบ: Prefix-เลขคิว (ใช้ padStart เติม 0 ด้านหน้าให้ดูสวยงาม เช่น PJAM-0001)
-        const customOrderCode = merchant.prefix + "-" + String(newOrderNumber).padStart(4, '0');
-
         // อัปเดตคิวล่าสุดกลับไปที่ตารางร้านค้า
         await trx('MERCHANTS')
             .where('id', merchantId)
             .update({ last_order_number: newOrderNumber });
 
+        // สร้าง order_code รูปแบบ: Prefix-เลขคิว (ใช้ padStart เติม 0 ด้านหน้าให้ดูสวยงาม เช่น PJAM-0001)
+        const customOrderCode = merchant.prefix + "-" + String(newOrderNumber).padStart(4, '0');
+
         // 3. สร้าง Order Header
         const [order] = await trx('ORDERS').insert({
-            order_code: customOrderCode, // <--- ใช้ตัวแปรที่สร้างใหม่ตรงนี้
+            order_code: customOrderCode,
             merchant_order_number: newOrderNumber,
             customer_id: customerId,
             merchant_id: merchantId,

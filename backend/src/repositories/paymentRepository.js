@@ -41,9 +41,18 @@ const updateOrderStatus = async (orderId, status, trx = db) => {
         .update({ status: status });
 };
 
+// ลบสลิปที่อายุเกิน 24 ชั่วโมง (Data Purging Policy)
+const purgeOldPaymentSlips = async () => {
+    const twentyFourHoursAgo = new Date(Date.now() - (24 * 60 * 60 * 1000));
+    return await db('PAYMENT_SLIPS')
+        .where('created_at', '<', twentyFourHoursAgo)
+        .del();
+};
+
 module.exports = {
     getOrderPaymentInfo,
     checkRefNumberExists,
     saveSlip,
-    updateOrderStatus
+    updateOrderStatus,
+    purgeOldPaymentSlips
 };

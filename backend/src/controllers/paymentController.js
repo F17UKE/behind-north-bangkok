@@ -54,7 +54,7 @@ const generatePromptPayQR = async (req, res) => {
 // 2. อัปโหลดและตรวจสอบสลิป
 const uploadAndVerifySlip = async (req, res) => {
     const { order_id } = req.params;
-    const { image_url } = req.body; // ในระบบจริงคุณอาจใช้ Multer รับไฟล์ แล้วอัปขึ้น S3 ก่อนนำ URL มาใส่ตรงนี้
+    const { image_url } = req.body;
 
     if (!image_url) {
         return res.status(400).json({ error: 'Image URL is required' });
@@ -98,7 +98,16 @@ const uploadAndVerifySlip = async (req, res) => {
         // ยืนยันการเปลี่ยนแปลงข้อมูล
         await trx.commit();
 
-        // ตรงนี้สามารถยิง Socket.io ไปหาห้องครัวให้เริ่มทำอาหารได้เลย (สถานะ PREPARING ตาม Flow จริงๆ)
+        // 5. ส่งสัญญาณ Socket.io แจ้งเตือนร้านค้าและลูกค้าว่าชำระเงินเรียบร้อยแล้ว
+        const io = req.app.get('io');
+        if (io) {
+            io.to(`order_${order_id}`).emit('ORDER_STATUS_UPDATED', {
+                order_id: Number(order_id),
+                status: 'PAID',
+                updated_by: 'CUSTOMER',
+                updated_at: new Date()
+            });
+        }
         
         res.status(200).json({ 
             message: 'Payment verified successfully',
