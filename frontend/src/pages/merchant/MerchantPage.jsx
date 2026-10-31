@@ -26,7 +26,7 @@ export default function MerchantPage() {
   const updateOrder = (id, status) => setOrders((current) => current.map((o) => o.id === id ? { ...o, status } : o));
   const sendChat = (e) => { e.preventDefault(); if (!chatText.trim()) return; setMessages((m) => [...m, { user: selectedChat, from: "merchant", text: chatText }]); setChatText(""); };
 
-  return <MobileShell tone="merchant"><div className="merchant-page">
+  return <MobileShell tone="merchant"><div key={screen} className="merchant-page screen-enter">
     {screen === "home" && <MerchantHome orders={orders} go={setScreen} query={query} setQuery={setQuery} />}
     {screen === "orders" && <MerchantOrders orders={filteredOrders} filter={orderFilter} setFilter={setOrderFilter} query={query} setQuery={setQuery} onBack={()=>setScreen("home")} updateOrder={updateOrder} />}
     {screen === "delivery" && <MerchantDelivery orders={orders} deliveryFee={deliveryFee} setDeliveryFee={setDeliveryFee} onBack={()=>setScreen("home")} />}

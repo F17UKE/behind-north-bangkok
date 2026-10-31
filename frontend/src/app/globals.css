@@ -703,6 +703,8 @@ body { width: 100%; }
   --app-title-size: clamp(20px, calc(18px + .6vw), 26px);
 }
 body, button, input, select, textarea { font-family: var(--app-font); }
+html { overflow-y: scroll; scrollbar-gutter: stable both-edges; }
+.mobile-app { width: 100%; max-width: 100%; overflow-x: clip; }
 .mobile-app:is(.orange,.merchant,.admin) { color: var(--app-text); font-family: var(--app-font); font-size: var(--app-body-size); }
 .mobile-app:is(.orange,.merchant,.admin) :is(.mobile-page,.merchant-page,.admin-page) { color: var(--app-text); font-family: var(--app-font); font-size: var(--app-body-size); line-height: 1.5; }
 .mobile-app.merchant .merchant-page,
@@ -792,4 +794,24 @@ body, button, input, select, textarea { font-family: var(--app-font); }
   .mobile-app:is(.orange,.merchant,.admin) *,
   .mobile-app:is(.orange,.merchant,.admin) *::before,
   .mobile-app:is(.orange,.merchant,.admin) *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
+}
+
+/* Short click feedback and gentle transitions between app screens. */
+.mobile-app :is(button,a) { -webkit-tap-highlight-color: transparent; transition: color .18s ease, background-color .18s ease, border-color .18s ease, box-shadow .2s ease, transform .18s cubic-bezier(.2,.7,.2,1), opacity .18s ease; }
+.mobile-app :is(button,a):active { transform: scale(.975); }
+.mobile-app :is(button,a):focus-visible { outline: 3px solid #f36b2150; outline-offset: 3px; }
+.mobile-app.merchant :is(button,a):focus-visible { outline-color: #18a96850; }
+.mobile-app.admin :is(button,a):focus-visible { outline-color: #2876e750; }
+.mobile-app :is(.filter-scroll button,.merchant-quick button,.tabs button,.bottom-nav button,.customer-categories button,.hero-slide-controls button) { transition: color .2s ease, background-color .2s ease, border-color .2s ease, box-shadow .2s ease, transform .2s cubic-bezier(.2,.7,.2,1); }
+.mobile-app :is(.filter-scroll button.active,.merchant-quick button:first-child,.tabs button.active,.customer-categories button.active) { transform: translateY(-1px); }
+.mobile-app .bottom-nav button.active > span { display: inline-block; animation: nav-pop .24s cubic-bezier(.2,.8,.2,1) both; }
+.mobile-app :is(.food-card,.editorial-card,.menu-card,.store-menu-item,.merchant-order-card,.admin-action-card,.recent-order-row,.merchant-recent,.admin-user-row) { transition: transform .2s cubic-bezier(.2,.7,.2,1), box-shadow .2s ease, background-color .2s ease, border-color .2s ease; }
+.mobile-app :is(.food-card,.editorial-card,.menu-card,.store-menu-item,.merchant-order-card,.admin-action-card,.recent-order-row,.merchant-recent,.admin-user-row):hover { transform: translateY(-2px); box-shadow: 0 10px 25px #202a3511; }
+.mobile-app :is(.profile-menu button,.setting-row,.admin-user-row,.contact-list button):hover { background-color: #f8f8f7; }
+.mobile-app .screen-enter { animation: app-screen-enter .2s ease-out both; will-change: opacity; }
+@keyframes app-screen-enter { from { opacity: .72; } to { opacity: 1; } }
+@keyframes nav-pop { 0% { transform: translateY(2px) scale(.82); } 100% { transform: translateY(0) scale(1); } }
+@media (prefers-reduced-motion: reduce) {
+  .mobile-app .screen-enter,
+  .mobile-app .bottom-nav button.active > span { animation: none !important; }
 }

@@ -22,7 +22,7 @@ export default function AdminPage() {
 
   const changeStatus=(status)=>{ setUsers((all)=>all.map((u)=>u.id===selectedUser.id?{...u,status}:u)); setSelectedUser((u)=>({...u,status})); };
 
-  return <MobileShell tone="admin"><div className="admin-page">
+  return <MobileShell tone="admin"><div key={screen} className="admin-page screen-enter">
     {screen === "home" && <AdminHome notice={notice} go={setScreen} />}
     {screen === "users" && <AdminUsers users={filtered} query={query} setQuery={setQuery} tab={tab} setTab={setTab} onBack={()=>setScreen("home")} onOpen={(u)=>{setSelectedUser(u);setScreen("detail");}} />}
     {screen === "detail" && <AdminDetail user={selectedUser} onBack={()=>setScreen("users")} onChangeStatus={changeStatus} />}
