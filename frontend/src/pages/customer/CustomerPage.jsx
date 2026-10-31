@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { BottomNav, MobileShell, SearchBar, StatusPill, TopBar, EmptyState } from "../../components/AppShell";
 import { customerFoods, customerMenu, initialOrders, statusLabel } from "../../data/mockData";
+import "./CustomerStorefront.css";
 
 const categories = ["All", "Coffee & Tea", "On Order", "More"];
 
@@ -69,8 +70,8 @@ export default function CustomerPage() {
 
   return (
     <MobileShell>
-      <div className="mobile-page">
-        {screen === "home" && <CustomerHome search={search} setSearch={setSearch} category={category} setCategory={setCategory} foods={filtered} cartCount={cartCount} onStore={(food) => { setScreen("store"); }} onCart={() => setScreen("basket")} />}
+      <div className="mobile-page customer-page-shell">
+        {screen === "home" && <CustomerHome search={search} setSearch={setSearch} category={category} setCategory={setCategory} foods={filtered} cartCount={cartCount} onStore={(food) => { setScreen("store"); }} onCart={() => setScreen("basket")} onOrders={() => setScreen("recent")} onProfile={() => setScreen("profile")} />}
         {screen === "store" && <CustomerStore cartCount={cartCount} onBack={() => setScreen("home")} addItem={addItem} onBasket={() => setScreen("basket")} />}
         {screen === "basket" && <Basket cart={cart} subtotal={subtotal} deliveryFee={deliveryFee} total={total} changeQty={changeQty} onBack={() => setScreen("store")} onNext={() => setScreen("update")} />}
         {screen === "update" && <UpdateBasket cart={cart} total={total} savedPlace={savedPlace} setSavedPlace={setSavedPlace} changeQty={changeQty} onBack={() => setScreen("basket")} onNext={() => setScreen("place")} />}
@@ -83,24 +84,41 @@ export default function CustomerPage() {
         {screen === "login" && <CustomerAuth mode="login" onBack={() => setScreen("profile")} onSuccess={() => setScreen("home")} onSignUp={() => setScreen("signup")} />}
         {screen === "signup" && <CustomerAuth mode="signup" onBack={() => setScreen("profile")} onSuccess={() => setScreen("home")} onLogin={() => setScreen("login")} />}
       </div>
-      <BottomNav tone="orange" active={screen === "profile" ? "profile" : ["recent", "delivery"].includes(screen) ? "order" : "home"} onChange={nav} items={[{ key: "home", label: "Home", icon: "⌂" }, { key: "order", label: "Order", icon: "▣" }, { key: "profile", label: "Profile", icon: "♙" }, { key: "cart", label: cartCount ? `Cart (${cartCount})` : "Cart", icon: "🛒" }]} />
+      <BottomNav tone="orange" active={screen === "profile" ? "profile" : ["recent", "delivery"].includes(screen) ? "order" : "home"} onChange={nav} items={[{ key: "home", label: "หน้าแรก", icon: "⌂" }, { key: "order", label: "ออเดอร์", icon: "▣" }, { key: "profile", label: "โปรไฟล์", icon: "♙" }, { key: "cart", label: cartCount ? `ตะกร้า (${cartCount})` : "ตะกร้า", icon: "🛒" }]} />
       <button className="floating-cart-button" onClick={() => setScreen("basket")}>🛒 {cartCount ? `${cartCount} · ${total} ฿` : "0 ฿"}</button>
     </MobileShell>
   );
 }
 
-function CustomerHome({ search, setSearch, category, setCategory, foods, onStore, onCart }) {
-  return <>
-    <div className="customer-header"><div className="avatar peach">👤</div><div className="customer-user"><b>นักศึกษา มจพ.</b><small>หอพักมหาวิทยาลัย มจพ.</small></div><button>♡</button><button onClick={onCart}>🛒</button></div>
-    <SearchBar value={search} onChange={setSearch} placeholder="Search ?" />
-    <div className="filter-scroll">{categories.map((c) => <button className={category === c ? "active" : ""} key={c} onClick={() => setCategory(c)}>{c}</button>)}</div>
-    <SectionHeader title="Order now!" />
-    <div className="food-grid">{foods.map((food) => <button className="food-card" key={food.id} onClick={() => onStore(food)}><div className="food-photo">{food.emoji}</div><b>{food.name}</b><small>{food.category}</small><span>⭐ {food.rating} · {food.price} ฿</span></button>)}</div>
-    <SectionHeader title="Recent" />
-    <div className="recent-compact"><div className="food-thumb">🍛</div><div><b>ครัวหลังมอ</b><small>ข้าวกะเพราไก่ · 90 ฿</small></div><span>Completed</span></div>
-  </>;
+function CustomerHome({ search, setSearch, category, setCategory, foods, cartCount, onStore, onCart, onOrders, onProfile }) {
+  return <div className="customer-home">
+    <header className="storefront-nav">
+      <Link className="storefront-brand" href="/customer" aria-label="Behind North หน้าแรก"><span>BN</span><b>Behind North</b></Link>
+      <div className="storefront-address"><span className="address-pin">⌖</span><div><small>จัดส่งถึง</small><b>หอพักมหาวิทยาลัย มจพ.</b></div><span className="address-chevron">⌄</span></div>
+      <div className="storefront-search"><SearchBar value={search} onChange={setSearch} placeholder="ค้นหาร้านหรือเมนู" /></div>
+      <nav className="storefront-links"><button onClick={onOrders}>รายการสั่งซื้อ</button><button onClick={onProfile}>บัญชีของฉัน</button></nav>
+      <button className="storefront-cart" onClick={onCart}><span>ตะกร้าของฉัน</span><b>🛒</b>{cartCount > 0 && <i>{cartCount}</i>}</button>
+    </header>
+
+    <section className="customer-hero">
+      <div className="hero-copy"><span className="hero-eyebrow"><i /> อร่อยใกล้ มจพ.</span><h1>มื้อนี้<br />ให้เรา <em>จัดให้</em></h1><p>รวมร้านโปรดแถวมหาวิทยาลัย<br className="desktop-break" /> ส่งตรงถึงหอ อร่อยง่ายในไม่กี่คลิก</p><button className="hero-cta" onClick={() => foods[0] && onStore(foods[0])}>เลือกร้านเลย <span>↗</span></button><div className="hero-note"><span>✦</span> ร้านเด็ด ส่งไว เริ่มต้นเพียง 40 บาท</div></div>
+      <div className="hero-photo"><picture><source srcSet="/food-hero.webp" type="image/webp" /><img src="/food-hero.png" alt="ข้าวกะเพราไก่ไข่ดาว" /></picture><div className="hero-photo-label"><span>เมนูฮิตประจำวันนี้</span><b>กะเพราไก่ไข่ดาว</b><small>หอมกะเพรา เผ็ดกำลังดี <strong>฿45</strong></small></div></div>
+      <div className="hero-index"><b>01</b><span /> 03</div>
+    </section>
+
+    <section className="discovery-section">
+      <div className="section-heading"><div><span className="section-kicker">เลือกตามใจ</span><h2>วันนี้อยากกินอะไร?</h2></div><a href="#popular">สำรวจร้านทั้งหมด <span>→</span></a></div>
+      <div className="customer-categories">{categories.map((c, i) => <button className={category === c ? "active" : ""} key={c} onClick={() => setCategory(c)}><span>{["✳", "☕", "↻", "＋"][i]}</span>{c === "All" ? "ทั้งหมด" : c === "Coffee & Tea" ? "กาแฟและชา" : c === "On Order" ? "สั่งบ่อย" : "เพิ่มเติม"}</button>)}</div>
+    </section>
+
+    <section className="discovery-section popular-section" id="popular"><div className="section-heading"><div><span className="section-kicker">คัดมาให้แล้ว</span><h2>ร้านยอดนิยมใกล้คุณ</h2></div><a href="#popular">ดูร้านทั้งหมด <span>→</span></a></div>
+      <div className="food-grid">{foods.map((food, index) => <button className={`food-card editorial-card card-tone-${index + 1}`} key={food.id} onClick={() => onStore(food)}><div className="food-photo"><span>{food.emoji}</span><i>↗</i></div><div className="editorial-card-info"><small className="food-category">{food.category}</small><b>{food.name}</b><div className="food-meta"><span>★ {food.rating}</span><i /><span>20–30 นาที</span><strong>฿{food.price}+</strong></div></div></button>)}</div>
+    </section>
+
+    <section className="repeat-order"><div className="repeat-icon">↻</div><div><span className="section-kicker">อยากกินอีกแล้ว</span><b>สั่งร้านเดิมอีกครั้ง</b><small>ครัวหลังมอ · ข้าวกะเพราไก่ · 90 บาท</small></div><button onClick={() => foods[0] && onStore(foods[0])}>สั่งซ้ำ <span>→</span></button></section>
+  </div>;
 }
-function SectionHeader({ title }) { return <div className="section-header"><b>{title}</b><button>See all ›</button></div>; }
+function SectionHeader({ title }) { return <div className="section-header"><b>{title}</b><button>ดูทั้งหมด ›</button></div>; }
 function CustomerStore({ onBack, addItem, onBasket, cartCount }) {
   return <>
     <TopBar title="ครัวหลังมอ" subtitle="อาหารตามสั่ง" onBack={onBack} action={<button className="topbar-cart" onClick={onBasket}>🛒 {cartCount}</button>} />
