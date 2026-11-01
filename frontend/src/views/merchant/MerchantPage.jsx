@@ -22,6 +22,7 @@ export default function MerchantPage() {
   const [newOrderAlert, setNewOrderAlert] = useState(null);
   const [currentMerchant, setCurrentMerchant] = useState(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
 
   useEffect(() => {
     const logged = authApi.isLoggedIn("MERCHANT");
