@@ -1,35 +1,817 @@
-@import "tailwindcss";
+:root{--orange:#ff7043;--orange2:#ff8a5f;--peach:#f8dfcf;--peach2:#fff4ed;--green:#18a968;--green2:#e8f7ef;--blue:#2876e7;--blue2:#eaf2ff;--ink:#1f2734;--muted:#8a919b;--line:#e7eaed;--bg:#f4f5f6;--white:#fff;}
+*{box-sizing:border-box}html,body{margin:0;padding:0}body{font-family:Arial,"Segoe UI",sans-serif;background:var(--bg);color:var(--ink)}button,input,select{font:inherit}button{cursor:pointer}a{text-decoration:none;color:inherit}
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+.role-shell{min-height:100vh;display:grid;place-items:center;padding:40px 18px;background:radial-gradient(circle at 50% 0,#ffe9dd,transparent 35%),var(--bg)}.role-container{width:min(1040px,100%);text-align:center}.bn-logo{width:68px;height:68px;border-radius:20px;background:var(--orange);color:#fff;display:grid;place-items:center;margin:auto;font-weight:900;font-size:24px}.role-shell .eyebrow{color:var(--orange);font-size:10px;font-weight:900;letter-spacing:.14em;margin:16px 0 8px}.role-shell h1{font-size:58px;margin:0}.role-shell h1 span{color:var(--orange)}.role-description{max-width:650px;margin:12px auto 28px;color:var(--muted);line-height:1.6}.role-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.role-choice{min-height:190px;background:#fff;border:1px solid var(--line);border-radius:22px;padding:22px;text-align:left;display:grid;gap:18px;box-shadow:0 10px 30px rgba(31,39,52,.05)}.role-choice:hover{transform:translateY(-3px)}.role-choice-icon{width:54px;height:54px;border-radius:16px;display:grid;place-items:center;font-size:28px}.role-choice.orange .role-choice-icon{background:var(--peach2)}.role-choice.green .role-choice-icon{background:var(--green2)}.role-choice.blue .role-choice-icon{background:var(--blue2)}.role-choice h2{font-size:22px;margin:0 0 5px}.role-choice p{font-size:12px;color:var(--muted);margin:0}.role-choice b{font-size:11px}.role-choice.orange h2,.role-choice.orange>b{color:var(--orange)}.role-choice.green h2,.role-choice.green>b{color:var(--green)}.role-choice.blue h2,.role-choice.blue>b{color:var(--blue)}
+
+.mobile-app{min-height:100vh;background:#f6f7f8}.mobile-page,.merchant-page,.admin-page{width:min(430px,100%);min-height:100vh;margin:auto;background:#fff;padding:0 15px 82px;position:relative;box-shadow:0 0 30px rgba(0,0,0,.04)}.mobile-app.merchant{background:#edf0ef}.mobile-app.admin{background:#edf1f5}
+.topbar{height:62px;display:grid;grid-template-columns:42px 1fr 42px;align-items:center;border-bottom:1px solid var(--line);position:sticky;top:0;background:rgba(255,255,255,.96);z-index:4}.topbar-btn{border:0;background:transparent;color:#535b65;font-size:24px}.topbar-title{text-align:center;display:flex;flex-direction:column}.topbar-title strong{font-size:12px}.topbar-title small{font-size:8px;color:var(--muted);margin-top:3px}.topbar-spacer{width:42px}.topbar-cart{border:0;background:var(--peach2);color:var(--orange);border-radius:9px;padding:6px 8px;font-size:9px;font-weight:800}
+.bottom-nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:min(430px,100%);display:grid;z-index:20;background:#fff;border-top:1px solid var(--line);padding:8px 4px 10px}.bottom-nav.orange{grid-template-columns:repeat(4,1fr)}.bottom-nav.merchant{grid-template-columns:repeat(4,1fr)}.bottom-nav.admin{grid-template-columns:repeat(4,1fr)}.bottom-nav button{border:0;background:transparent;color:#818891;font-size:17px}.bottom-nav button.active{color:var(--orange)}.bottom-nav.merchant button.active{color:var(--green)}.bottom-nav.admin button.active{color:var(--blue)}.bottom-nav small{display:block;font-size:8px;margin-top:3px}
+
+.customer-header,.merchant-profile,.admin-header{display:flex;align-items:center;gap:8px;padding:11px 0}.customer-header>div:nth-child(2),.merchant-profile>div:nth-child(2),.admin-header>div:nth-child(2){flex:1}.customer-header b,.merchant-profile b,.admin-header b{display:block;font-size:10px}.customer-header small,.merchant-profile small,.admin-header small{display:block;color:var(--muted);font-size:7px;margin-top:3px}.customer-header button,.merchant-profile button,.admin-header button{border:0;background:transparent;font-size:17px;color:#7b838d}.avatar{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:#f2f3f4;font-size:17px}.avatar.peach{background:var(--peach)}.avatar.small{width:30px;height:30px;font-size:14px}.search-bar{height:35px;border:1px solid var(--line);border-radius:10px;background:#fafbfc;display:flex;align-items:center;gap:6px;padding:0 9px;color:#8f959d}.search-bar input{border:0;background:transparent;outline:none;width:100%;font-size:10px}.filter-scroll{display:flex;gap:5px;overflow:auto;padding:8px 0 13px}.filter-scroll button{border:0;background:#f1f2f3;color:#7f858d;border-radius:99px;padding:7px 10px;font-size:8px;white-space:nowrap}.filter-scroll button.active{background:var(--orange);color:#fff}.section-header{display:flex;align-items:center;justify-content:space-between;margin:6px 0 9px}.section-header b{font-size:12px}.section-header button{border:0;background:transparent;color:var(--muted);font-size:8px}.section-header>span{color:var(--muted);font-size:8px}
+.food-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.food-card{border:0;background:#fff;padding:0;text-align:left;border-radius:13px;overflow:hidden;box-shadow:0 2px 13px rgba(0,0,0,.05)}.food-photo{height:112px;display:grid;place-items:center;font-size:54px;background:radial-gradient(circle at 60% 35%,#fff7f1,#ffc6ac)}.food-card>b,.food-card>small,.food-card>span{display:block;padding:0 9px}.food-card>b{font-size:9px;margin-top:7px}.food-card>small{font-size:7px;color:var(--muted);margin-top:3px}.food-card>span{font-size:7px;color:var(--muted);margin:5px 0 9px}.card-bottom{display:flex;align-items:center;justify-content:space-between;padding:0 8px 8px;color:var(--orange);font-size:9px;font-weight:900}.card-bottom button{width:28px;height:28px;border:0;border-radius:9px;background:var(--orange);color:#fff}.recent-compact{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--line)}.recent-compact>div:nth-child(2){flex:1}.recent-compact b{display:block;font-size:9px}.recent-compact small{display:block;color:var(--muted);font-size:7px;margin-top:2px}.recent-compact>span{color:var(--green);font-size:7px}
+
+.store-hero{position:relative}.store-photo-large{height:175px;border-radius:14px;background:linear-gradient(135deg,#c77744,#ffaf72);display:grid;place-items:center;font-size:86px}.store-info{padding:8px 2px}.store-info b{display:block;font-size:13px}.store-info small{display:block;color:var(--muted);font-size:8px;margin-top:3px}.store-heart{position:absolute;right:8px;top:8px;width:33px;height:33px;border:0;border-radius:50%;background:#fff;color:var(--orange);font-size:18px}.sub-section{padding:6px 1px 9px}.sub-section b{display:block;font-size:12px}.sub-section small{display:block;color:var(--muted);font-size:7px;margin-top:2px}.primary-btn,.secondary-btn{width:100%;border-radius:10px;padding:11px;border:0;font-size:9px;font-weight:900;margin-top:10px}.primary-btn{background:var(--orange);color:#fff}.primary-btn span{margin-left:5px}.secondary-btn{background:#fff;border:1px solid #ffb9a2;color:var(--orange)}.floating-cart-button{position:fixed;right:calc(50% - min(215px,50vw) + 10px);bottom:78px;border:0;background:var(--orange);color:#fff;border-radius:99px;padding:9px 12px;font-size:8px;font-weight:900;box-shadow:0 7px 20px rgba(255,112,67,.2);z-index:11}
+
+.cart-shop{display:flex;align-items:center;gap:8px;padding:10px 1px}.cart-shop>div:nth-child(2){flex:1}.cart-shop b{display:block;font-size:9px}.cart-shop small{display:block;color:var(--muted);font-size:7px;margin-top:2px}.food-thumb{width:34px;height:34px;border-radius:9px;background:#fff0e8;display:grid;place-items:center;font-size:19px}.cart-row{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--line)}.cart-row-info{flex:1}.cart-row-info b{display:block;font-size:9px}.cart-row-info small{display:block;color:var(--muted);font-size:7px;margin-top:2px}.qty{display:flex;align-items:center;gap:7px}.qty button{width:23px;height:23px;border:1px solid var(--line);background:#fff;border-radius:7px;font-size:12px}.qty span{font-size:9px;font-weight:900}.summary{margin-top:10px;padding:11px;border:1px solid var(--line);border-radius:11px}.summary>div{display:flex;justify-content:space-between;padding:4px 0;font-size:9px}.summary>div b{color:#424a54}.summary hr{border:0;border-top:1px solid var(--line)}.summary .total{font-size:12px}.summary .total strong{color:var(--orange);font-size:16px}.order-card,.summary-card-big,.payment-card,.form-card,.delivery-card,.profile-card-top,.profile-menu,.notice-card{margin-top:10px;border:1px solid var(--line);border-radius:12px;background:#fff;padding:11px}.simple-line{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px solid var(--line);font-size:9px}.orange-text{color:var(--orange);font-size:9px}.field{display:block;margin-top:11px}.field b{display:block;font-size:9px}.field input{width:100%;border:1px solid var(--line);border-radius:8px;padding:9px;margin-top:5px;font-size:8px}.check-line{display:flex;gap:6px;align-items:center;font-size:8px;margin-top:10px}.summary-title{font-size:10px}.summary-item{display:flex;justify-content:space-between;font-size:9px;padding:5px 0}.payment-card>b{font-size:9px}.payment-card>div{display:flex;justify-content:space-between;border-top:1px solid var(--line);margin-top:8px;padding-top:8px;font-size:9px}
+
+.list-title{display:flex;justify-content:space-between;margin:12px 0 7px;font-size:10px}.recent-order-row{width:100%;display:flex;align-items:center;gap:8px;border:0;border-bottom:1px solid var(--line);background:#fff;text-align:left;padding:10px 0}.recent-main{flex:1}.recent-main b,.recent-main small,.recent-main span{display:block}.recent-main b{font-size:9px}.recent-main small{font-size:7px;color:#6e7680;margin-top:3px}.recent-main span{font-size:7px;color:var(--muted);margin-top:3px}.recent-right{text-align:right}.recent-right b{display:block;font-size:9px}.recent-right small{font-size:7px}.green-text{color:var(--green)}.delivery-card{padding:12px}.delivery-order-head{display:flex;justify-content:space-between;align-items:start;margin-bottom:10px}.delivery-order-head b{display:block;font-size:10px}.delivery-order-head small{display:block;color:var(--muted);font-size:7px;margin-top:3px}.delivery-order-head strong{font-size:13px;color:var(--orange)}.delivery-step{display:flex;gap:8px;position:relative;padding:7px 0 14px;opacity:.35}.delivery-step.done{opacity:1}.delivery-step:not(:last-child)::after{content:"";position:absolute;left:11px;top:28px;height:20px;border-left:2px solid #e3e4e6}.step-dot{width:24px;height:24px;border-radius:50%;background:#f0f1f2;display:grid;place-items:center;font-size:8px}.delivery-step.done .step-dot{background:#fff0e8;color:var(--orange)}.delivery-step b{display:block;font-size:9px}.delivery-step small{display:block;color:var(--muted);font-size:7px;margin-top:2px}.restaurant-line{display:flex;align-items:center;gap:8px;padding:10px 1px}.restaurant-line>div:nth-child(2){flex:1}.restaurant-line b{display:block;font-size:9px}.restaurant-line small{display:block;color:var(--muted);font-size:7px;margin-top:2px}.restaurant-line>span{font-size:7px}
+
+.profile-card-top{padding:0;overflow:hidden;position:relative}.profile-cover{height:72px;background:linear-gradient(110deg,var(--orange),#ff9870)}.profile-avatar{position:absolute;left:13px;top:45px;width:53px;height:53px;border-radius:50%;background:#fff;display:grid;place-items:center;font-size:27px;box-shadow:0 4px 14px rgba(0,0,0,.1)}.profile-text{padding:33px 12px 12px}.profile-text b{display:block;font-size:11px}.profile-text small{display:block;color:var(--muted);font-size:8px;margin-top:3px}.profile-menu{padding:0;overflow:hidden}.profile-menu button,.setting-row{width:100%;border:0;background:#fff;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;padding:11px;font-size:9px;text-align:left}.profile-menu button.danger{color:#cb5252}.auth-page{min-height:calc(100vh - 82px);margin:0 -15px;padding:50px 25px 25px;background:#f6dfcf}.auth-back{border:0;background:transparent;font-size:25px;color:#6c7077}.auth-art{text-align:center;font-size:31px;word-spacing:14px;margin:18px 0 23px}.auth-panel{background:#fff;border-radius:13px;padding:16px;box-shadow:0 8px 25px rgba(0,0,0,.1)}.auth-panel h2{text-align:center;color:var(--orange);font-size:17px;margin:0 0 11px}.auth-panel input{display:block;width:100%;border:1px solid var(--line);border-radius:8px;padding:9px;margin:7px 0;font-size:8px}.auth-panel small,.text-link{display:block;text-align:center;font-size:7px}.text-link{border:0;background:transparent;color:var(--orange);margin:5px auto}.social-row{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:10px}.social-row button{border:0;background:#fff;padding:8px;border-radius:8px;font-size:8px}
+.chat-top{display:grid;grid-template-columns:38px 1fr 38px;align-items:center;margin:0 -15px;background:linear-gradient(110deg,var(--orange),#ff8e64);color:#fff;padding:10px 12px}.chat-top button{border:0;background:transparent;color:#fff;font-size:24px}.chat-top b{display:block;font-size:10px}.chat-top small{display:block;font-size:7px;margin-top:2px;opacity:.8}.chat-messages{min-height:calc(100vh - 170px);padding:12px 0 68px;background:linear-gradient(#fff,#fff9f6)}.chat-messages.short{min-height:300px;max-height:380px;overflow:auto}.chat-bubble{max-width:76%;padding:8px 10px;margin:6px 0;border-radius:12px;font-size:9px}.chat-bubble.store{background:#fff;border:1px solid #f1e1d8}.chat-bubble.me{background:#ffd1bf;margin-left:auto}.chat-compose{position:fixed;bottom:66px;left:50%;transform:translateX(-50%);width:min(400px,calc(100% - 26px));display:flex;gap:5px;background:#fff;padding:6px;border:1px solid var(--line);box-shadow:0 3px 15px rgba(0,0,0,.08);border-radius:11px;z-index:8}.chat-compose input{flex:1;border:0;outline:none;font-size:8px}.chat-compose button{width:28px;height:28px;border:0;border-radius:50%;background:var(--orange);color:#fff}.saved-toast{position:fixed;top:16px;right:16px;background:var(--green);color:#fff;border-radius:9px;padding:7px;font-size:8px}.empty-state{text-align:center;padding:45px 10px;color:var(--muted)}.empty-state>div{font-size:35px}.empty-state h3{color:var(--ink);font-size:11px;margin:9px 0 4px}.empty-state p{font-size:8px;margin:0}
+
+/* merchant */
+.merchant-page{padding-left:13px;padding-right:13px}.merchant-quick{display:flex;gap:5px;overflow:auto;padding:8px 0}.merchant-quick button{border:0;background:#f0f1f2;border-radius:99px;padding:6px 8px;font-size:7px;white-space:nowrap}.merchant-quick button:first-child{background:var(--orange);color:#fff}.merchant-stats{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:6px 0 13px}.merchant-stats div{border:1px solid var(--line);border-radius:10px;padding:10px;background:#fff}.merchant-stats b{display:block;font-size:19px}.merchant-stats small{display:block;color:var(--muted);font-size:7px;margin-top:3px}.merchant-stats em{display:block;color:var(--green);font-style:normal;font-size:7px;margin-top:2px}.merchant-recent{width:100%;display:flex;align-items:center;gap:8px;padding:9px 0;border:0;border-bottom:1px solid var(--line);background:#fff;text-align:left}.merchant-recent>div:nth-child(2){flex:1}.merchant-recent b{display:block;font-size:9px}.merchant-recent small{display:block;color:var(--muted);font-size:7px;margin-top:3px}.merchant-recent strong{font-size:9px;color:var(--orange)}.merchant-filters button.active{background:var(--green)}.merchant-order-card{border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:8px;background:#fff}.order-head{display:flex;justify-content:space-between;align-items:start}.order-head b{display:block;font-size:9px}.order-head small{display:block;color:var(--muted);font-size:7px;margin-top:3px}.order-head strong{font-size:10px;color:var(--orange)}.order-items{padding:8px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin-top:8px;display:grid;gap:3px;font-size:8px;color:#626a74}.order-footer{display:flex;justify-content:space-between;align-items:center;padding-top:8px}.accept-button{border:0;background:var(--green2);color:var(--green);border-radius:7px;padding:6px 9px;font-size:8px;font-weight:900}.status-pill{display:inline-block;border-radius:99px;padding:5px 8px;font-size:7px;font-weight:800;background:var(--peach2);color:var(--orange)}.status-pill.yellow{background:#fff5d7;color:#9d7800}.status-pill.green{background:var(--green2);color:var(--green)}.delivery-fee-box{border:1px solid var(--line);border-radius:12px;padding:12px;background:#fff}.delivery-fee-box h3{font-size:10px;margin:0 0 7px}.delivery-fee-box input{width:100%;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:9px}.range-track{height:7px;background:#ffe1d6;border-radius:99px;margin:9px 0;position:relative}.range-track i{position:absolute;left:30%;width:11px;height:11px;top:-2px;border-radius:50%;background:var(--orange)}.compact .order-head{align-items:center}.merchant-chat-layout{display:grid;grid-template-rows:auto auto;border:1px solid var(--line);border-radius:11px;overflow:hidden}.contact-list{max-height:310px;overflow:auto}.contact-list button{width:100%;display:flex;align-items:center;gap:7px;border:0;background:#fff;border-bottom:1px solid var(--line);padding:8px;text-align:left}.contact-list button.selected{background:#fff3ec}.contact-list>button>div:nth-child(2){flex:1}.contact-list b{display:block;font-size:8px}.contact-list small,.contact-list span{color:var(--muted);font-size:6px}.chat-panel{border-top:1px solid var(--line)}.chat-panel-top{display:flex;align-items:center;gap:7px;padding:8px;background:#fff9f6}.chat-panel-top b{display:block;font-size:8px}.chat-panel-top small{display:block;color:var(--green);font-size:6px;margin-top:2px}
+
+/* admin */
+.admin-page{background:linear-gradient(#fff,#fff8f5)}.admin-stats{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:6px}.admin-stats div{background:#fff;border:1px solid var(--line);border-radius:11px;padding:9px}.admin-stats b{display:block;font-size:18px}.admin-stats small{display:block;font-size:7px;color:var(--muted);margin-top:3px}.admin-stats em{font-size:7px;color:var(--green);font-style:normal}.sales-card{background:#fff;border:1px solid var(--line);border-radius:11px;padding:10px;margin-top:8px}.sales-head{display:flex;justify-content:space-between;font-size:9px}.sales-head span{color:var(--orange);font-size:7px}.chart{height:125px;display:flex;align-items:end;gap:7px;border-bottom:1px solid #d9dce0;padding:12px 5px 0}.chart i{flex:1;max-width:18px;background:linear-gradient(#ff9a70,var(--orange));border-radius:5px 5px 0 0}.sales-card>small{font-size:6px;color:var(--muted)}.admin-action-card{width:100%;display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);border-radius:11px;margin-top:8px;padding:10px;text-align:left}.admin-action-card>span{width:33px;height:33px;border-radius:9px;background:var(--blue2);display:grid;place-items:center}.admin-action-card>div{flex:1}.admin-action-card b{display:block;font-size:9px}.admin-action-card small{display:block;color:var(--muted);font-size:7px;margin-top:3px}.admin-action-card>strong{font-size:16px;color:var(--muted)}.admin-user-row{width:100%;display:grid;grid-template-columns:auto 1fr auto auto;gap:7px;align-items:center;border:0;border-bottom:1px solid var(--line);background:#fff;padding:8px 1px;text-align:left}.admin-user-row>div:nth-child(2){min-width:0}.admin-user-row b{display:block;font-size:9px}.admin-user-row div:nth-child(2) small{display:block;color:var(--muted);font-size:7px;margin-top:2px}.admin-user-row>span,.admin-user-row>small{color:var(--muted);font-size:7px}.admin-detail-head{display:flex;align-items:center;gap:7px;background:var(--orange);color:#fff;margin:0 -15px;padding:10px 12px}.admin-detail-head button{border:0;background:transparent;color:#fff;font-size:23px}.admin-detail-head b{font-size:10px}.detail-profile{display:flex;gap:9px;align-items:center;padding:11px 1px}.detail-avatar{width:50px;height:50px;border-radius:50%;background:#fff;display:grid;place-items:center;font-size:25px;border:2px solid #fff;box-shadow:0 2px 9px rgba(0,0,0,.08)}.detail-profile h2{font-size:14px;margin:0 0 4px}.detail-contact{border:1px solid var(--line);background:#fff;border-radius:11px;padding:9px;display:grid;gap:5px;font-size:8px}.detail-stats{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:7px}.detail-stats div{background:#fff;border:1px solid var(--line);border-radius:11px;padding:9px;text-align:center}.detail-stats b{display:block;font-size:18px}.detail-stats small{font-size:7px;color:var(--muted)}.detail-buttons{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:8px}.detail-buttons button{border:1px solid var(--line);background:#fff;border-radius:9px;padding:9px;font-size:8px;font-weight:800}.detail-buttons .danger-filled{background:#ffd4d4;color:#c34a4a;border-color:#ffc0c0}.setting-profile{display:flex;align-items:center;gap:8px;padding:12px 3px}.setting-profile b{display:block;font-size:10px}.setting-profile small{display:block;color:var(--muted);font-size:7px;margin-top:3px}.setting-row{border-radius:10px;margin-bottom:6px;border:1px solid var(--line);font-size:9px}.logout-admin{width:100%;border:0;background:#fff;color:#cc5555;border-radius:10px;padding:10px;font-size:9px}.notice-card{padding:12px}.notice-card b{display:block;font-size:11px}.notice-card small{display:block;color:var(--muted);font-size:7px;margin-top:3px}.notice-card p{font-size:8px;line-height:1.5;color:#606872}.notice-card .primary-btn{margin-top:7px}
+
+@media(min-width:700px){.mobile-page,.merchant-page,.admin-page{box-shadow:0 0 40px rgba(0,0,0,.05)}.bottom-nav{box-shadow:0 -2px 15px rgba(0,0,0,.04)}}
+@media(max-width:700px){.role-grid{grid-template-columns:1fr}.role-shell h1{font-size:38px}.role-shell{padding:28px 14px}.mobile-page,.merchant-page,.admin-page{width:100%;box-shadow:none}.floating-cart-button{right:12px}}
+
+/* ============================================================
+   Behind NB Responsive Layer
+   Mobile -> Tablet/iPad -> Desktop/Web
+   Keeps the Figma-inspired visual language while allowing the
+   same UI to use the available viewport instead of a fixed phone.
+   ============================================================ */
+html, body { overflow-x: hidden; }
+body { width: 100%; }
+
+/* Small phones: 320-479 */
+@media (max-width: 479px) {
+  .mobile-page,
+  .merchant-page,
+  .admin-page {
+    width: 100%;
+    max-width: 480px;
+    padding-left: 15px;
+    padding-right: 15px;
+    box-shadow: none;
+  }
+
+  .bottom-nav {
+    width: 100%;
+    max-width: 480px;
+  }
+
+  .floating-cart-button {
+    right: 12px;
+    bottom: 78px;
+    max-width: calc(100vw - 24px);
+  }
+
+  .chat-compose {
+    width: calc(100vw - 24px);
+    max-width: 460px;
+  }
+
+  .role-shell h1 { font-size: clamp(34px, 9vw, 42px); }
+  .role-grid { grid-template-columns: 1fr; }
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+/* Large phones / small tablets: 480-767 */
+@media (min-width: 480px) and (max-width: 767px) {
+  .mobile-page,
+  .merchant-page,
+  .admin-page {
+    width: min(680px, 100%);
+    padding-left: 22px;
+    padding-right: 22px;
+    box-shadow: 0 0 28px rgba(0,0,0,.04);
+  }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  .bottom-nav {
+    width: min(680px, 100%);
+  }
+
+  .food-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .food-photo {
+    height: auto;
+    aspect-ratio: 1.15 / 1;
+    font-size: clamp(45px, 8vw, 62px);
+  }
+
+  .store-photo-large {
+    height: 240px;
+  }
+
+  .merchant-chat-layout {
+    grid-template-columns: 250px minmax(0, 1fr);
+    grid-template-rows: 1fr;
+  }
+
+  .contact-list {
+    max-height: none;
+  }
+
+  .chat-panel {
+    border-top: 0;
+    border-left: 1px solid var(--line);
+  }
+
+  .admin-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .role-grid {
+    grid-template-columns: 1fr;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* iPad / tablet: 768-1023 */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .mobile-page,
+  .merchant-page,
+  .admin-page {
+    width: min(900px, 100%);
+    padding-left: 32px;
+    padding-right: 32px;
+    box-shadow: 0 0 35px rgba(0,0,0,.05);
+  }
+
+  .bottom-nav {
+    width: min(760px, calc(100% - 32px));
+    border-radius: 16px 16px 0 0;
+  }
+
+  .floating-cart-button {
+    right: 24px;
+  }
+
+  .chat-compose {
+    width: min(760px, calc(100vw - 48px));
+  }
+
+  .food-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  .food-photo {
+    height: auto;
+    aspect-ratio: 1.15 / 1;
+    font-size: 64px;
+  }
+
+  .food-card>b { font-size: 11px; }
+  .food-card>small,
+  .food-card>span { font-size: 9px; }
+
+  .store-photo-large {
+    height: 280px;
+  }
+
+  .store-info b { font-size: 16px; }
+  .store-info small { font-size: 10px; }
+
+  .primary-btn,
+  .secondary-btn {
+    font-size: 11px;
+    padding: 13px;
+  }
+
+  .merchant-chat-layout {
+    grid-template-columns: 300px minmax(0, 1fr);
+    grid-template-rows: 1fr;
+  }
+
+  .contact-list {
+    max-height: none;
+  }
+
+  .chat-panel {
+    border-top: 0;
+    border-left: 1px solid var(--line);
+  }
+
+  .admin-stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .admin-action-card {
+    display: inline-flex;
+    width: calc(50% - 6px);
+    margin-right: 7px;
+    vertical-align: top;
+  }
 }
 
-/* ซ่อน Scrollbar แต่ยังสามารถเลื่อนดูเนื้อหาได้ */
-.scrollbar-hide::-webkit-scrollbar {
-    display: none;
+/* Desktop web: 1024+ */
+@media (min-width: 1024px) {
+  .mobile-app {
+    background: #edf0f2;
+  }
+
+  .mobile-page,
+  .merchant-page,
+  .admin-page {
+    width: min(1180px, 100%);
+    padding: 0 34px 104px;
+    box-shadow: 0 0 50px rgba(0,0,0,.06);
+  }
+
+  .bottom-nav {
+    width: min(720px, calc(100% - 48px));
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -4px 22px rgba(0,0,0,.07);
+  }
+
+  .floating-cart-button {
+    right: max(20px, calc((100vw - 1180px) / 2 + 24px));
+    bottom: 86px;
+    font-size: 10px;
+    padding: 11px 15px;
+  }
+
+  .chat-compose {
+    width: min(820px, calc(100vw - 64px));
+  }
+
+  .customer-header,
+  .merchant-profile,
+  .admin-header {
+    padding: 17px 0;
+  }
+
+  .customer-header b,
+  .merchant-profile b,
+  .admin-header b {
+    font-size: 14px;
+  }
+
+  .customer-header small,
+  .merchant-profile small,
+  .admin-header small {
+    font-size: 10px;
+  }
+
+  .avatar {
+    width: 42px;
+    height: 42px;
+    font-size: 20px;
+  }
+
+  .search-bar {
+    height: 44px;
+    padding: 0 13px;
+  }
+
+  .search-bar input { font-size: 13px; }
+
+  .filter-scroll { gap: 8px; padding: 11px 0 17px; }
+  .filter-scroll button {
+    padding: 9px 14px;
+    font-size: 10px;
+  }
+
+  .section-header b { font-size: 16px; }
+  .section-header button { font-size: 10px; }
+
+  .food-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 18px;
+  }
+
+  .food-photo {
+    height: auto;
+    aspect-ratio: 1.35 / 1;
+    font-size: clamp(55px, 5vw, 76px);
+  }
+
+  .food-card>b { font-size: 13px; }
+  .food-card>small { font-size: 10px; }
+  .food-card>span { font-size: 9px; margin-top: 7px; }
+
+  .card-bottom {
+    padding: 0 11px 11px;
+    font-size: 11px;
+  }
+
+  .card-bottom button {
+    width: 34px;
+    height: 34px;
+  }
+
+  .recent-compact {
+    padding: 13px 0;
+  }
+  .recent-compact b { font-size: 12px; }
+  .recent-compact small,
+  .recent-compact>span { font-size: 9px; }
+
+  .store-photo-large {
+    height: 340px;
+    border-radius: 18px;
+  }
+
+  .store-info { padding: 12px 3px; }
+  .store-info b { font-size: 18px; }
+  .store-info small { font-size: 11px; }
+  .store-heart { width: 42px; height: 42px; font-size: 23px; }
+  .sub-section b { font-size: 16px; }
+  .sub-section small { font-size: 10px; }
+
+  .primary-btn,
+  .secondary-btn {
+    padding: 14px;
+    border-radius: 12px;
+    font-size: 12px;
+  }
+
+  .cart-row,
+  .merchant-recent,
+  .recent-order-row {
+    padding: 13px 0;
+  }
+
+  .cart-row-info b,
+  .recent-main b,
+  .merchant-recent b {
+    font-size: 12px;
+  }
+
+  .cart-row-info small,
+  .recent-main small,
+  .recent-main span,
+  .merchant-recent small {
+    font-size: 9px;
+  }
+
+  .food-thumb {
+    width: 42px;
+    height: 42px;
+    font-size: 22px;
+  }
+
+  .qty button {
+    width: 30px;
+    height: 30px;
+    font-size: 14px;
+  }
+  .qty span { font-size: 11px; }
+
+  .summary,
+  .order-card,
+  .summary-card-big,
+  .payment-card,
+  .form-card,
+  .delivery-card,
+  .profile-card-top,
+  .profile-menu,
+  .notice-card {
+    padding: 16px;
+    border-radius: 14px;
+  }
+
+  .summary>div,
+  .summary-item,
+  .simple-line,
+  .payment-card>div {
+    font-size: 11px;
+  }
+
+  .summary .total { font-size: 14px; }
+  .summary .total strong { font-size: 19px; }
+
+  .merchant-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    max-width: 760px;
+  }
+
+  .merchant-stats div {
+    padding: 16px;
+    border-radius: 14px;
+  }
+
+  .merchant-stats b { font-size: 27px; }
+  .merchant-stats small,
+  .merchant-stats em { font-size: 10px; }
+
+  .merchant-quick button {
+    padding: 9px 13px;
+    font-size: 10px;
+  }
+
+  .merchant-order-card {
+    padding: 15px;
+    border-radius: 14px;
+  }
+
+  .order-head b { font-size: 12px; }
+  .order-head small,
+  .order-items { font-size: 9px; }
+
+  .accept-button {
+    padding: 8px 12px;
+    font-size: 10px;
+  }
+
+  .merchant-chat-layout {
+    grid-template-columns: 320px minmax(0, 1fr);
+    grid-template-rows: minmax(500px, 1fr);
+    min-height: 600px;
+  }
+
+  .contact-list {
+    max-height: none;
+  }
+
+  .chat-panel {
+    border-top: 0;
+    border-left: 1px solid var(--line);
+  }
+
+  .chat-messages.short {
+    min-height: 420px;
+    max-height: none;
+  }
+
+  .admin-stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .admin-stats div {
+    padding: 15px;
+    border-radius: 14px;
+  }
+
+  .admin-stats b { font-size: 25px; }
+  .admin-stats small,
+  .admin-stats em { font-size: 9px; }
+
+  .sales-card {
+    padding: 16px;
+    border-radius: 14px;
+  }
+
+  .chart { height: 220px; gap: 11px; }
+  .chart i { max-width: 28px; }
+
+  .admin-action-card {
+    width: calc(50% - 8px);
+    display: inline-flex;
+    margin-right: 9px;
+    padding: 14px;
+  }
+
+  .admin-action-card b { font-size: 12px; }
+  .admin-action-card small { font-size: 9px; }
+
+  .admin-user-row {
+    padding: 12px 3px;
+    grid-template-columns: auto 1fr auto auto;
+  }
+  .admin-user-row b { font-size: 11px; }
+  .admin-user-row div:nth-child(2) small,
+  .admin-user-row>span,
+  .admin-user-row>small { font-size: 9px; }
+
+  .detail-contact { font-size: 10px; padding: 13px; }
+  .detail-stats { gap: 12px; }
+  .detail-stats div { padding: 13px; }
+  .detail-stats b { font-size: 25px; }
+  .detail-stats small { font-size: 9px; }
+  .detail-buttons { gap: 10px; }
+  .detail-buttons button { padding: 12px; font-size: 10px; }
+
+  .auth-page { padding: 35px 20%; }
+  .auth-panel { padding: 20px; }
+  .auth-panel h2 { font-size: 21px; }
+  .auth-panel input { font-size: 11px; padding: 11px; }
 }
-.scrollbar-hide {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
+
+/* Very wide desktop / large monitor */
+@media (min-width: 1440px) {
+  .mobile-page,
+  .merchant-page,
+  .admin-page {
+    width: min(1280px, 100%);
+    padding-left: 46px;
+    padding-right: 46px;
+  }
+
+  .bottom-nav {
+    width: 760px;
+  }
+
+  .floating-cart-button {
+    right: max(24px, calc((100vw - 1280px) / 2 + 28px));
+  }
+
+  .food-grid { gap: 22px; }
+  .store-photo-large { height: 380px; }
+}
+
+/* Accessibility / touch targets */
+@media (pointer: coarse) {
+  .filter-scroll button,
+  .merchant-quick button,
+  .bottom-nav button,
+  .qty button,
+  .topbar-btn,
+  .customer-header button,
+  .merchant-profile button,
+  .admin-header button {
+    min-height: 40px;
+  }
+
+  .primary-btn,
+  .secondary-btn,
+  .accept-button {
+    min-height: 44px;
+  }
+}
+
+/* Customer storefront refresh: scoped to the orange customer app only. */
+.mobile-app.orange { background: #f5f6f7; color: #20242b; }
+.mobile-app.orange .mobile-page { width: min(100%, 1180px); padding: 0 22px 110px; background: #f5f6f7; box-shadow: none; }
+.mobile-app.orange .customer-header { gap: 12px; padding: 22px 0 16px; }
+.mobile-app.orange .customer-location-mark { width: 42px; height: 42px; border-radius: 14px; display: grid; place-items: center; flex: 0 0 auto; color: #fff; background: #00a86b; font-size: 24px; }
+.mobile-app.orange .customer-user small { display: block; color: #777f89; font-size: 11px; margin-bottom: 4px; }
+.mobile-app.orange .customer-user b { font-size: 14px; color: #252a31; }
+.mobile-app.orange .customer-user b span { color: #00a86b; }
+.mobile-app.orange .customer-header-action { width: 42px; height: 42px; border-radius: 50%; background: #fff; box-shadow: 0 2px 10px #17221b0d; font-size: 19px; }
+.mobile-app.orange .search-bar { height: 48px; border: 1px solid #e8eaed; border-radius: 14px; background: #fff; padding: 0 14px; box-shadow: 0 3px 12px #17221b08; }
+.mobile-app.orange .search-bar span { font-size: 22px; }
+.mobile-app.orange .search-bar input { font-size: 14px; color: #272c33; }
+.mobile-app.orange .customer-promo { position: relative; min-height: 154px; display: flex; align-items: center; justify-content: space-between; overflow: hidden; margin: 18px 0 10px; padding: 22px 24px; border-radius: 20px; color: #fff; background: linear-gradient(110deg,#008e5a,#02b875 72%,#21ca89); }
+.mobile-app.orange .customer-promo::after { content: ""; position: absolute; width: 210px; height: 210px; right: 35px; top: -110px; border-radius: 50%; background: #ffffff14; }
+.mobile-app.orange .customer-promo div:first-child { display: grid; gap: 5px; z-index: 1; }
+.mobile-app.orange .customer-promo span { font-size: 11px; font-weight: 800; opacity: .85; }
+.mobile-app.orange .customer-promo b { font-size: 23px; letter-spacing: -.3px; }
+.mobile-app.orange .customer-promo small { font-size: 12px; opacity: .9; }
+.mobile-app.orange .customer-promo i { z-index: 1; font-size: clamp(58px,8vw,92px); font-style: normal; filter: drop-shadow(0 8px 8px #005b3b55); transform: rotate(-8deg); }
+.mobile-app.orange .promo-dots { position: absolute; bottom: 12px; left: 24px; display: flex; gap: 5px; }
+.mobile-app.orange .promo-dots b { width: 6px; height: 6px; border-radius: 50%; background: #ffffff70; }
+.mobile-app.orange .promo-dots b:first-child { width: 17px; border-radius: 9px; background: #fff; }
+.mobile-app.orange .filter-scroll { gap: 8px; padding: 12px 0 17px; }
+.mobile-app.orange .filter-scroll button { padding: 10px 15px; background: #fff; border: 1px solid #e7e9eb; color: #4f5660; font-size: 12px; font-weight: 700; }
+.mobile-app.orange .filter-scroll button.active { color: #fff; background: #00a86b; border-color: #00a86b; }
+.mobile-app.orange .section-header { margin: 10px 0 13px; }
+.mobile-app.orange .section-header b { font-size: 19px; letter-spacing: -.25px; }
+.mobile-app.orange .section-header button { font-size: 12px; color: #00a86b; font-weight: 700; }
+.mobile-app.orange .food-grid { grid-template-columns: repeat(4,minmax(0,1fr)); gap: 16px; }
+.mobile-app.orange .food-card { border: 1px solid #eceef0; border-radius: 16px; box-shadow: 0 4px 16px #1b26300a; transition: transform .18s ease, box-shadow .18s ease; }
+.mobile-app.orange .food-card:hover { transform: translateY(-2px); box-shadow: 0 9px 22px #1b263014; }
+.mobile-app.orange .food-photo { height: auto; aspect-ratio: 1.5 / 1; font-size: clamp(45px,5vw,68px); background: linear-gradient(145deg,#fff6ef,#f6d7c4); }
+.mobile-app.orange .food-card>b { margin-top: 11px; padding: 0 12px; font-size: 14px; }
+.mobile-app.orange .food-card>small { padding: 0 12px; font-size: 11px; }
+.mobile-app.orange .food-card>span { margin: 8px 0 12px; padding: 0 12px; font-size: 11px; }
+.mobile-app.orange .recent-compact { padding: 13px; border: 1px solid #eceef0; border-radius: 14px; background: #fff; }
+.mobile-app.orange .recent-compact b { font-size: 13px; }
+.mobile-app.orange .recent-compact small,.mobile-app.orange .recent-compact>span { font-size: 11px; }
+.mobile-app.orange .bottom-nav.orange { width: min(600px,100%); padding: 10px 8px calc(10px + env(safe-area-inset-bottom)); border: 1px solid #eef0f1; border-bottom: 0; border-radius: 18px 18px 0 0; box-shadow: 0 -5px 24px #17221b0d; }
+.mobile-app.orange .bottom-nav button { font-size: 20px; }
+.mobile-app.orange .bottom-nav small { font-size: 10px; }
+.mobile-app.orange .bottom-nav button.active { color: #00a86b; }
+.mobile-app.orange .floating-cart-button { border-radius: 14px; padding: 12px 18px; background: #00a86b; box-shadow: 0 8px 22px #008c5a35; font-size: 12px; }
+.mobile-app.orange .topbar { height: 66px; }
+.mobile-app.orange .topbar-title strong { font-size: 15px; }
+.mobile-app.orange .topbar-title small { font-size: 11px; }
+.mobile-app.orange .store-photo-large { border-radius: 18px; }
+.mobile-app.orange .store-info b { font-size: 19px; }
+.mobile-app.orange .store-info small { font-size: 12px; }
+.mobile-app.orange .sub-section b { font-size: 16px; }
+.mobile-app.orange .sub-section small { font-size: 11px; }
+.mobile-app.orange .primary-btn,.mobile-app.orange .secondary-btn { min-height: 48px; border-radius: 13px; font-size: 13px; }
+.mobile-app.orange .cart-row-info b,.mobile-app.orange .recent-main b,.mobile-app.orange .delivery-step b,.mobile-app.orange .profile-menu button { font-size: 13px; }
+.mobile-app.orange .cart-row-info small,.mobile-app.orange .recent-main small,.mobile-app.orange .recent-main span,.mobile-app.orange .delivery-step small { font-size: 11px; }
+.mobile-app.orange .summary>div,.mobile-app.orange .summary-item,.mobile-app.orange .simple-line,.mobile-app.orange .payment-card>div { font-size: 12px; }
+.mobile-app.orange .customer-header { border-bottom: 0; }
+@media (max-width: 760px) {
+  .mobile-app.orange .mobile-page { padding: 0 16px 100px; }
+  .mobile-app.orange .customer-header { padding-top: 16px; }
+  .mobile-app.orange .customer-promo { min-height: 142px; padding: 18px; }
+  .mobile-app.orange .customer-promo b { font-size: 20px; }
+  .mobile-app.orange .customer-promo small { max-width: 220px; font-size: 11px; }
+  .mobile-app.orange .customer-promo i { font-size: 58px; }
+  .mobile-app.orange .promo-dots { left: 18px; }
+  .mobile-app.orange .food-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 11px; }
+  .mobile-app.orange .food-photo { font-size: 56px; }
+  .mobile-app.orange .food-card>b { font-size: 12px; }
+  .mobile-app.orange .food-card>small,.mobile-app.orange .food-card>span { font-size: 10px; }
+  .mobile-app.orange .section-header b { font-size: 16px; }
+  .mobile-app.orange .floating-cart-button { right: 12px; bottom: 82px; }
+}
+
+/* Responsive customer storefront refinements */
+.mobile-app.orange { --customer-accent: #f36b21; background: #f7f7f8; }
+.mobile-app.orange .mobile-page { width: min(100%, 1320px); margin: 0 auto; background: #f7f7f8; padding: 0 clamp(18px, 3vw, 44px) 120px; }
+.mobile-app.orange .customer-home { width: 100%; }
+.mobile-app.orange .customer-location-mark { background: var(--customer-accent); }
+.mobile-app.orange .customer-user b span { color: var(--customer-accent); }
+.mobile-app.orange .customer-header-action { color: #34383e; }
+.mobile-app.orange .search-bar { height: 54px; border-radius: 14px; }
+.mobile-app.orange .search-bar input { font-size: 15px; }
+.mobile-app.orange .customer-promo { min-height: 188px; padding: 28px 34px; background: linear-gradient(105deg,#f05b18 0%,#fa7b28 58%,#ff9b48 100%); }
+.mobile-app.orange .customer-promo b { font-size: clamp(24px,2.2vw,32px); }
+.mobile-app.orange .customer-promo span { font-size: 13px; }
+.mobile-app.orange .customer-promo small { font-size: 14px; }
+.mobile-app.orange .customer-promo i { font-size: clamp(78px,8vw,118px); }
+.mobile-app.orange .promo-dots { left: 34px; bottom: 16px; }
+.mobile-app.orange .filter-scroll button.active { background: var(--customer-accent); border-color: var(--customer-accent); }
+.mobile-app.orange .section-header { margin: 24px 0 16px; }
+.mobile-app.orange .section-header b { font-size: clamp(18px,1.5vw,22px); }
+.mobile-app.orange .section-header button { color: var(--customer-accent); }
+.mobile-app.orange .food-grid { grid-template-columns: repeat(4,minmax(0,1fr)); gap: clamp(14px,1.5vw,22px); }
+.mobile-app.orange .food-card { border-radius: 18px; }
+.mobile-app.orange .food-photo { aspect-ratio: 1.5 / 1; }
+.mobile-app.orange .food-card>b { font-size: 15px; }
+.mobile-app.orange .food-card>small,.mobile-app.orange .food-card>span { font-size: 12px; }
+.mobile-app.orange .recent-compact { max-width: 760px; }
+.mobile-app.orange .bottom-nav.orange { width: min(600px,calc(100% - 32px)); }
+.mobile-app.orange .bottom-nav button.active { color: var(--customer-accent); }
+.mobile-app.orange .floating-cart-button { background: var(--customer-accent); }
+.mobile-app.orange .filter-scroll { scrollbar-width: none; }
+.mobile-app.orange .filter-scroll::-webkit-scrollbar { display: none; }
+
+@media (max-width: 767px) {
+  .mobile-app.orange .mobile-page { width: 100%; padding: 0 16px 106px; }
+  .mobile-app.orange .customer-header { padding: 14px 0 12px; gap: 9px; }
+  .mobile-app.orange .customer-location-mark { width: 38px; height: 38px; font-size: 21px; }
+  .mobile-app.orange .customer-user small { font-size: 11px; }
+  .mobile-app.orange .customer-user b { font-size: 13px; }
+  .mobile-app.orange .customer-header-action { width: 38px; height: 38px; }
+  .mobile-app.orange .search-bar { height: 48px; }
+  .mobile-app.orange .search-bar input { font-size: 14px; }
+  .mobile-app.orange .customer-promo { min-height: 145px; margin-top: 15px; padding: 17px 18px; border-radius: 18px; }
+  .mobile-app.orange .customer-promo b { font-size: 21px; }
+  .mobile-app.orange .customer-promo span { font-size: 11px; }
+  .mobile-app.orange .customer-promo small { font-size: 11px; max-width: 225px; }
+  .mobile-app.orange .customer-promo i { font-size: 61px; }
+  .mobile-app.orange .promo-dots { left: 18px; bottom: 11px; }
+  .mobile-app.orange .filter-scroll { padding: 12px 0 5px; }
+  .mobile-app.orange .filter-scroll button { font-size: 12px; padding: 9px 13px; }
+  .mobile-app.orange .section-header { margin: 19px 0 12px; }
+  .mobile-app.orange .section-header b { font-size: 17px; }
+  .mobile-app.orange .food-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 11px; }
+  .mobile-app.orange .food-photo { font-size: 54px; }
+  .mobile-app.orange .food-card>b { font-size: 13px; }
+  .mobile-app.orange .food-card>small,.mobile-app.orange .food-card>span { font-size: 11px; }
+  .mobile-app.orange .bottom-nav.orange { width: 100%; border-radius: 16px 16px 0 0; }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .mobile-app.orange .mobile-page { width: min(100%, 1000px); padding: 0 36px 122px; }
+  .mobile-app.orange .customer-header { padding: 22px 0 17px; }
+  .mobile-app.orange .customer-promo { min-height: 190px; }
+  .mobile-app.orange .filter-scroll button { font-size: 13px; padding: 11px 17px; }
+  .mobile-app.orange .food-grid { grid-template-columns: repeat(3,minmax(0,1fr)); gap: 18px; }
+  .mobile-app.orange .food-photo { aspect-ratio: 1.35 / 1; font-size: 70px; }
+  .mobile-app.orange .food-card>b { font-size: 15px; }
+  .mobile-app.orange .food-card>small,.mobile-app.orange .food-card>span { font-size: 12px; }
+  .mobile-app.orange .bottom-nav.orange { width: min(720px,calc(100% - 48px)); }
+  .mobile-app.orange .floating-cart-button { right: max(28px,calc((100vw - 1000px) / 2 + 28px)); bottom: 92px; }
+}
+
+@media (min-width: 1024px) {
+  .mobile-app.orange .mobile-page { padding-top: 6px; }
+  .mobile-app.orange .customer-header { padding: 24px 0 18px; }
+  .mobile-app.orange .customer-location-mark { width: 48px; height: 48px; font-size: 26px; }
+  .mobile-app.orange .customer-user small { font-size: 13px; }
+  .mobile-app.orange .customer-user b { font-size: 16px; }
+  .mobile-app.orange .customer-header-action { width: 48px; height: 48px; font-size: 21px; }
+  .mobile-app.orange .search-bar { max-width: 780px; }
+  .mobile-app.orange .customer-promo { max-width: 100%; min-height: 220px; }
+  .mobile-app.orange .filter-scroll button { font-size: 13px; padding: 11px 18px; }
+  .mobile-app.orange .food-grid { grid-template-columns: repeat(4,minmax(0,1fr)); }
+  .mobile-app.orange .food-photo { aspect-ratio: 1.45 / 1; }
+  .mobile-app.orange .bottom-nav.orange { width: min(720px,calc(100% - 64px)); }
+}
+
+/* Shared minimalist type and spacing system across customer, merchant and admin. */
+@font-face {
+  font-family: "Anuphan UI";
+  src: url("/fonts/Anuphan-Variable.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 100 700;
+  font-display: swap;
+}
+:root {
+  --app-font: "Anuphan UI", "Leelawadee UI", "Segoe UI", sans-serif;
+  --app-text: #252a31;
+  --app-muted: #747d87;
+  --app-line: #e7e9ec;
+  --app-panel: #fff;
+  --app-body-size: clamp(15px, calc(14px + .2vw), 16px);
+  --app-caption-size: 13px;
+  --app-title-size: clamp(20px, calc(18px + .6vw), 26px);
+}
+body, button, input, select, textarea { font-family: var(--app-font); }
+html { overflow-y: scroll; scrollbar-gutter: stable both-edges; }
+.mobile-app { width: 100%; max-width: 100%; overflow-x: clip; }
+.mobile-app:is(.orange,.merchant,.admin) { color: var(--app-text); font-family: var(--app-font); font-size: var(--app-body-size); }
+.mobile-app:is(.orange,.merchant,.admin) :is(.mobile-page,.merchant-page,.admin-page) { color: var(--app-text); font-family: var(--app-font); font-size: var(--app-body-size); line-height: 1.5; }
+.mobile-app.merchant .merchant-page,
+.mobile-app.admin .admin-page { width: min(100%, 1320px); padding: 0 clamp(20px, 4vw, 54px) 120px; background: #f7f8f9; box-shadow: none; }
+.mobile-app.merchant,.mobile-app.admin { background: #f2f4f5; }
+
+/* Shared headers, section titles and readable supporting copy. */
+.mobile-app:is(.orange,.merchant,.admin) .topbar { height: 72px; padding: 0 4px; }
+.mobile-app:is(.orange,.merchant,.admin) .topbar-title strong { font-size: clamp(17px, calc(16px + .35vw), 20px); font-weight: 700; line-height: 1.3; }
+.mobile-app:is(.orange,.merchant,.admin) .topbar-title small { font-size: 13px; line-height: 1.35; }
+.mobile-app:is(.orange,.merchant,.admin) .topbar-btn { font-size: 28px; }
+.mobile-app:is(.orange,.merchant,.admin) .section-header { margin: 22px 0 14px; }
+.mobile-app:is(.orange,.merchant,.admin) .section-header b { font-size: clamp(19px, calc(18px + .4vw), 23px); font-weight: 700; }
+.mobile-app:is(.orange,.merchant,.admin) .section-header button,
+.mobile-app:is(.orange,.merchant,.admin) .section-header > span { font-size: 14px; }
+.mobile-app:is(.orange,.merchant,.admin) .search-bar { min-height: 48px; padding: 0 13px; }
+.mobile-app:is(.orange,.merchant,.admin) .search-bar input { font-size: 15px; }
+.mobile-app:is(.orange,.merchant,.admin) .filter-scroll { gap: 8px; padding: 12px 0 16px; }
+.mobile-app:is(.orange,.merchant,.admin) .filter-scroll button,
+.mobile-app:is(.orange,.merchant,.admin) .merchant-quick button { min-height: 40px; padding: 8px 14px; font-size: 13px; }
+.mobile-app:is(.orange,.merchant,.admin) .bottom-nav { padding: 10px 8px calc(12px + env(safe-area-inset-bottom)); }
+.mobile-app:is(.orange,.merchant,.admin) .bottom-nav button { font-size: 21px; }
+.mobile-app:is(.orange,.merchant,.admin) .bottom-nav small { font-size: 12px; }
+.mobile-app:is(.orange,.merchant,.admin) .primary-btn,
+.mobile-app:is(.orange,.merchant,.admin) .secondary-btn,
+.mobile-app:is(.orange,.merchant,.admin) .accept-button { min-height: 46px; padding: 10px 16px; font-size: 15px; font-weight: 650; }
+
+/* Basket, order tracking, profile, shop and admin text sizes. */
+.mobile-app:is(.orange,.merchant,.admin) :is(.cart-shop b,.cart-row-info b,.recent-main b,.delivery-step b,.restaurant-line b,.merchant-recent b,.order-head b,.admin-user-row b,.admin-action-card b,.profile-menu button,.setting-profile b,.setting-row,.setting-row button,.notice-card b,.payment-card>b) { font-size: 16px; line-height: 1.4; font-weight: 650; }
+.mobile-app:is(.orange,.merchant,.admin) :is(.merchant-profile b,.admin-header b,.profile-text b,.contact-list b,.chat-panel-top b,.sales-head,.delivery-fee-box h3,.detail-profile h2) { font-size: 16px; line-height: 1.4; font-weight: 650; }
+.mobile-app:is(.orange,.merchant,.admin) :is(.cart-shop small,.cart-row-info small,.recent-main small,.recent-main span,.delivery-step small,.restaurant-line small,.order-head small,.merchant-recent small,.admin-user-row small,.admin-user-row>span,.admin-action-card small,.setting-profile small,.notice-card small,.detail-stats small) { font-size: 13px; line-height: 1.5; }
+.mobile-app:is(.orange,.merchant,.admin) :is(.merchant-profile small,.admin-header small,.profile-text small,.contact-list small,.contact-list span,.chat-panel-top small,.sales-head span,.sales-card>small,.delivery-fee-box small) { font-size: 13px; line-height: 1.5; }
+.mobile-app:is(.orange,.merchant,.admin) :is(.summary>div,.summary-item,.simple-line,.payment-card>div,.order-items,.detail-contact,.notice-card p,.field,.check-line,.merchant-quick,.merchant-order-card,.contact-list b,.chat-panel-top b,.chat-bubble,.chat-compose input) { font-size: 14px; line-height: 1.55; }
+.mobile-app:is(.orange,.merchant,.admin) :is(.summary .total,.summary .total strong,.delivery-order-head strong,.order-head strong,.merchant-recent strong,.orange-text) { font-size: 18px; }
+.mobile-app:is(.orange,.merchant,.admin) :is(.field b,.payment-card>b,.summary-title,.status-pill,.accept-button,.detail-buttons button,.logout-admin,.topbar-cart) { font-size: 14px; }
+.mobile-app:is(.orange,.merchant,.admin) :is(.field input,.delivery-fee-box input,.chat-compose input) { min-height: 46px; padding: 10px 12px; font-size: 16px; }
+.mobile-app:is(.orange,.merchant,.admin) .cart-row,
+.mobile-app:is(.orange,.merchant,.admin) .recent-order-row,
+.mobile-app:is(.orange,.merchant,.admin) .merchant-recent { gap: 12px; padding: 14px 0; }
+.mobile-app:is(.orange,.merchant,.admin) .cart-row-info,
+.mobile-app:is(.orange,.merchant,.admin) .recent-main { min-width: 0; }
+.mobile-app:is(.orange,.merchant,.admin) .qty { gap: 9px; }
+.mobile-app:is(.orange,.merchant,.admin) .qty button { width: 34px; height: 34px; font-size: 17px; }
+.mobile-app:is(.orange,.merchant,.admin) .qty span { min-width: 16px; font-size: 14px; }
+.mobile-app:is(.orange,.merchant,.admin) .food-thumb { width: 48px; height: 48px; border-radius: 12px; }
+
+/* Keep all role cards quiet and consistent while preserving role accents. */
+.mobile-app:is(.orange,.merchant,.admin) :is(.order-card,.summary-card-big,.payment-card,.form-card,.delivery-card,.profile-card-top,.profile-menu,.notice-card,.merchant-order-card,.merchant-stats>div,.admin-stats>div,.sales-card,.delivery-fee-box,.detail-contact,.detail-stats>div,.admin-action-card,.merchant-chat-layout) { border: 1px solid var(--app-line); border-radius: 16px; background: var(--app-panel); box-shadow: 0 4px 18px #1d27320a; }
+.mobile-app:is(.orange,.merchant,.admin) .merchant-order-card,
+.mobile-app:is(.orange,.merchant,.admin) .notice-card,
+.mobile-app:is(.orange,.merchant,.admin) .admin-action-card { padding: 16px; }
+.mobile-app:is(.orange,.merchant,.admin) .merchant-stats { gap: 12px; margin: 12px 0 18px; }
+.mobile-app:is(.orange,.merchant,.admin) .merchant-stats div,
+.mobile-app:is(.orange,.merchant,.admin) .admin-stats div,
+.mobile-app:is(.orange,.merchant,.admin) .detail-stats div { padding: 16px; }
+.mobile-app:is(.orange,.merchant,.admin) :is(.merchant-stats b,.admin-stats b,.detail-stats b) { font-size: clamp(23px, calc(21px + .5vw), 30px); }
+.mobile-app:is(.orange,.merchant,.admin) :is(.merchant-stats small,.merchant-stats em,.admin-stats small,.admin-stats em) { font-size: 13px; }
+.mobile-app:is(.orange,.merchant,.admin) .store-info b { font-size: 20px; }
+.mobile-app:is(.orange,.merchant,.admin) .store-info small { font-size: 14px; }
+.mobile-app:is(.orange,.merchant,.admin) .profile-menu button,
+.mobile-app:is(.orange,.merchant,.admin) .setting-row { min-height: 54px; padding: 14px 15px; }
+.mobile-app:is(.orange,.merchant,.admin) .list-title { margin: 18px 0 12px; font-size: 16px; }
+.mobile-app:is(.orange,.merchant,.admin) .admin-user-row { gap: 12px; padding: 14px 2px; }
+.mobile-app:is(.orange,.merchant,.admin) .admin-detail-head { padding: 14px 16px; }
+.mobile-app:is(.orange,.merchant,.admin) .admin-detail-head b { font-size: 17px; }
+.mobile-app:is(.orange,.merchant,.admin) .detail-profile h2 { font-size: 20px; }
+.mobile-app:is(.orange,.merchant,.admin) .detail-contact { padding: 15px; gap: 9px; }
+.mobile-app:is(.orange,.merchant,.admin) .detail-buttons { gap: 10px; margin-top: 14px; }
+.mobile-app:is(.orange,.merchant,.admin) .chart { height: 180px; }
+.mobile-app:is(.orange,.merchant,.admin) .profile-text { padding: 35px 14px 14px; }
+
+@media (max-width: 479px) {
+  .mobile-app.merchant .merchant-page,
+  .mobile-app.admin .admin-page { padding: 0 16px 108px; }
+  .mobile-app:is(.orange,.merchant,.admin) .section-header { margin: 18px 0 12px; }
+  .mobile-app:is(.orange,.merchant,.admin) :is(.cart-shop b,.cart-row-info b,.recent-main b,.delivery-step b,.restaurant-line b,.merchant-recent b,.order-head b,.admin-user-row b,.admin-action-card b,.profile-menu button,.setting-row) { font-size: 15px; }
+  .mobile-app:is(.orange,.merchant,.admin) :is(.cart-shop small,.cart-row-info small,.recent-main small,.recent-main span,.delivery-step small,.restaurant-line small,.order-head small,.merchant-recent small,.admin-user-row small,.admin-user-row>span,.admin-action-card small) { font-size: 12px; }
+  .mobile-app:is(.orange,.merchant,.admin) .bottom-nav small { font-size: 11px; }
+}
+@media (min-width: 768px) {
+  .mobile-app.merchant .merchant-page,
+  .mobile-app.admin .admin-page { width: min(100%, 1320px); padding-inline: clamp(32px, 5vw, 64px); }
+  .mobile-app:is(.orange,.merchant,.admin) .merchant-chat-layout { min-height: 560px; }
+  .mobile-app:is(.orange,.merchant,.admin) .contact-list { max-height: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mobile-app:is(.orange,.merchant,.admin) *,
+  .mobile-app:is(.orange,.merchant,.admin) *::before,
+  .mobile-app:is(.orange,.merchant,.admin) *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
+}
+
+/* Short click feedback and gentle transitions between app screens. */
+.mobile-app :is(button,a) { -webkit-tap-highlight-color: transparent; transition: color .18s ease, background-color .18s ease, border-color .18s ease, box-shadow .2s ease, transform .18s cubic-bezier(.2,.7,.2,1), opacity .18s ease; }
+.mobile-app :is(button,a):active { transform: scale(.975); }
+.mobile-app :is(button,a):focus-visible { outline: 3px solid #f36b2150; outline-offset: 3px; }
+.mobile-app.merchant :is(button,a):focus-visible { outline-color: #18a96850; }
+.mobile-app.admin :is(button,a):focus-visible { outline-color: #2876e750; }
+.mobile-app :is(.filter-scroll button,.merchant-quick button,.tabs button,.bottom-nav button,.customer-categories button,.hero-slide-controls button) { transition: color .2s ease, background-color .2s ease, border-color .2s ease, box-shadow .2s ease, transform .2s cubic-bezier(.2,.7,.2,1); }
+.mobile-app :is(.filter-scroll button.active,.merchant-quick button:first-child,.tabs button.active,.customer-categories button.active) { transform: translateY(-1px); }
+.mobile-app .bottom-nav button.active > span { display: inline-block; animation: nav-pop .24s cubic-bezier(.2,.8,.2,1) both; }
+.mobile-app :is(.food-card,.editorial-card,.menu-card,.store-menu-item,.merchant-order-card,.admin-action-card,.recent-order-row,.merchant-recent,.admin-user-row) { transition: transform .2s cubic-bezier(.2,.7,.2,1), box-shadow .2s ease, background-color .2s ease, border-color .2s ease; }
+.mobile-app :is(.food-card,.editorial-card,.menu-card,.store-menu-item,.merchant-order-card,.admin-action-card,.recent-order-row,.merchant-recent,.admin-user-row):hover { transform: translateY(-2px); box-shadow: 0 10px 25px #202a3511; }
+.mobile-app :is(.profile-menu button,.setting-row,.admin-user-row,.contact-list button):hover { background-color: #f8f8f7; }
+.mobile-app .screen-enter { animation: app-screen-enter .2s ease-out both; will-change: opacity; }
+@keyframes app-screen-enter { from { opacity: .72; } to { opacity: 1; } }
+@keyframes nav-pop { 0% { transform: translateY(2px) scale(.82); } 100% { transform: translateY(0) scale(1); } }
+@media (prefers-reduced-motion: reduce) {
+  .mobile-app .screen-enter,
+  .mobile-app .bottom-nav button.active > span { animation: none !important; }
 }
