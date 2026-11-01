@@ -1,6 +1,7 @@
 const express = require('express');
 const http = require('http');
 const cors = require('cors');
+const helmet = require('helmet');
 const { Server } = require('socket.io');
 const cron = require('node-cron');
 require('dotenv').config();
@@ -8,11 +9,18 @@ require('dotenv').config();
 const app = express();
 const server = http.createServer(app);
 
-// ตั้งค่า CORS ให้ Frontend (Next.js) เรียกใช้งาน API ได้
+// 1. Security Headers (Helmet) & CORS
+app.use(helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" } // อนุญาตให้โหลดรูปภาพข้าม Origin ได้
+}));
 app.use(cors({ origin: 'http://localhost:3000' }));
 app.use(express.json());
 
-// 1. Import Routes
+// 2. Rate Limiting Middlewares (ป้องกัน Brute Force & DDoS)
+const { authLimiter, paymentLimiter, apiLimiter } = require('./src/middlewares/rateLimiter');
+app.use('/api', apiLimiter);
+
+// 3. Import Routes
 const authRoutes = require('./src/routes/auth');
 const userRoutes = require('./src/routes/user');
 const merchantRoutes = require('./src/routes/merchant');
@@ -29,13 +37,13 @@ const masterDataRoute = require('./src/routes/masterData');
 const uploadRoutes = require('./src/routes/upload');
 const adminRoutes = require('./src/routes/admin');
 
-// 2. Mount Routes
+// 4. Mount Routes พร้อม Rate Limiting ในจุดสำคัญ
 app.use('/api', masterDataRoute);
-app.use('/api/auth', authRoutes);
+app.use('/api/auth', authLimiter, authRoutes); // จำกัดความถี่การล็อกอิน/สมัครสมาชิก
 app.use('/api/users', userRoutes);
 app.use('/api/merchants', merchantRoutes);
 app.use('/api/orders', orderRoutes);
-app.use('/api/orders', paymentRoutes);
+app.use('/api/orders', paymentLimiter, paymentRoutes); // จำกัดความถี่การสร้าง QR และตรวจสลิป
 app.use('/api/merchants/kds', kdsRoutes);
 app.use('/api/orders', chatRoutes);
 app.use('/api/menus', menuRoutes);
@@ -46,7 +54,17 @@ app.use('/api/riders', riderBoardRoute);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/admin', adminRoutes);
 
-// 3. ตั้งค่า Socket.io สำหรับระบบ Real-time Chat และ Notification
+// API เริ่มต้นสำหรับทดสอบสุขภาพระบบ
+app.get('/api/health', (req, res) => {
+    res.json({ status: 'ok', message: 'Behind North Bangkok API is running!' });
+});
+
+// 5. Centralized Error Handling Middlewares
+const { notFoundHandler, errorHandler } = require('./src/middlewares/errorHandler');
+app.use(notFoundHandler); // จัดการ Route 404
+app.use(errorHandler);    // จัดการ Validation Errors และ System Exceptions กลาง
+
+// 6. ตั้งค่า Socket.io สำหรับระบบ Real-time Chat และ Notification
 const io = new Server(server, {
     cors: { origin: 'http://localhost:3000' }
 });
@@ -58,11 +76,11 @@ app.set('io', io);
 const socketHandler = require('./src/socket');
 socketHandler(io); 
 
-// 4. เตรียม Storage Bucket (Supabase Storage)
+// 7. เตรียม Storage Bucket (Supabase Storage)
 const storageService = require('./src/services/storageService');
 storageService.ensureBucketExists().catch(err => console.error('Bucket check warning:', err.message));
 
-// 5. Cron Jobs: Data Purging & Storage Cleanup
+// 8. Cron Jobs: Data Purging & Storage Cleanup
 const chatRepository = require('./src/repositories/chatRepository');
 const paymentRepository = require('./src/repositories/paymentRepository');
 const orderTimeoutService = require('./src/services/orderTimeoutService');
@@ -107,11 +125,6 @@ cron.schedule('* * * * *', async () => {
     } catch (error) {
         console.error('[Cron Job] Order timeout check error:', error);
     }
-});
-
-// API เริ่มต้นสำหรับทดสอบ
-app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', message: 'Behind North Bangkok API is running!' });
 });
 
 const PORT = process.env.PORT || 5000;

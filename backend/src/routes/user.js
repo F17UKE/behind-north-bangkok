@@ -12,8 +12,8 @@ const riderRepo = require('../repositories/rider');
 
 // [GET] /api/users/me
 // ดึงข้อมูลโปรไฟล์ของตัวเองตาม Token ที่ส่งมา
-// อนุญาตให้ทั้ง 3 Roles เข้าถึงได้
-router.get('/me', verifyToken, checkRole(['CUSTOMER', 'MERCHANT', 'RIDER']), async (req, res) => {
+// อนุญาตให้ทุก Role เข้าถึงได้
+router.get('/me', verifyToken, checkRole(['CUSTOMER', 'MERCHANT', 'RIDER', 'ADMIN']), async (req, res) => {
     try {
         const userId = req.user.id;
         const role = req.user.role;
@@ -22,11 +22,16 @@ router.get('/me', verifyToken, checkRole(['CUSTOMER', 'MERCHANT', 'RIDER']), asy
         // ค้นหาข้อมูลตาม Role
         if (role === 'CUSTOMER') {
             profile = await customerRepo.findCustomerById(userId); 
-            // *หมายเหตุ: ต้องไปเพิ่มฟังก์ชัน findCustomerById ใน customer.repository.js ด้วยนะครับ
         } else if (role === 'MERCHANT') {
             profile = await merchantRepo.findMerchantById(userId);
         } else if (role === 'RIDER') {
             profile = await riderRepo.findRiderById(userId);
+        } else if (role === 'ADMIN') {
+            profile = {
+                id: 0,
+                username: req.user.username || 'admin',
+                role: 'ADMIN'
+            };
         }
 
         if (!profile) {
@@ -39,7 +44,7 @@ router.get('/me', verifyToken, checkRole(['CUSTOMER', 'MERCHANT', 'RIDER']), asy
         res.status(200).json({ profile });
 
     } catch (error) {
-        console.error(error);
+        console.error('Get profile error:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

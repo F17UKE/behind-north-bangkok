@@ -1,27 +1,23 @@
 const express = require('express');
 const router = express.Router();
 const orderController = require('../controllers/orderController');
-const verifyToken = require('../middlewares/verifyToken'); // Middleware สำหรับเช็ค JWT Token
+const verifyToken = require('../middlewares/verifyToken');
+const validate = require('../middlewares/validate');
+const { createOrderSchema, changeOrderStatusSchema } = require('../validations/orderValidation');
 
-// นำ verifyToken มาใช้กับทุก Route ในไฟล์นี้ เพื่อยืนยันตัวตนก่อนทำงาน
+// นำ verifyToken มาใช้กับทุก Route ในไฟล์นี้
 router.use(verifyToken);
 
 /**
  * @route   POST /api/orders
- * @desc    สร้างออเดอร์ใหม่ (สถานะเริ่มต้นจะเป็น PENDING_ACCEPT)
- * @access  Private (เฉพาะ Customer ที่ Login แล้ว)
+ * @desc    สร้างออเดอร์ใหม่ (ตรวจสอบโครงสร้างตะกร้าและรายการอาหารด้วย Zod)
  */
-router.post('/', orderController.createOrder);
+router.post('/', validate(createOrderSchema), orderController.createOrder);
 
 /**
  * @route   PUT /api/orders/:order_id/status
  * @desc    เปลี่ยนสถานะของออเดอร์ (ตามกฎของ State Machine)
- * @access  Private (Customer, Merchant, Rider ขึ้นอยู่กับสถานะที่ต้องการเปลี่ยน)
  */
-router.put('/:order_id/status', orderController.changeOrderStatus);
-
-// (เตรียมไว้สำหรับอนาคต)
-// router.get('/:order_id', orderController.getOrderDetails);
-// router.put('/:order_id/items/:item_id/complete', orderController.completeOrderItem); // สำหรับ KDS
+router.put('/:order_id/status', validate(changeOrderStatusSchema), orderController.changeOrderStatus);
 
 module.exports = router;

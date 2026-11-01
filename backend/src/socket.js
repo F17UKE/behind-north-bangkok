@@ -76,6 +76,10 @@ module.exports = (io) => {
                 const room = `rider_${riderId}`;
                 socket.join(room);
                 console.log(`🛵 Rider ${riderId} เข้าสู่ห้อง: ${room}`);
+                // แจ้งกลับให้ Client รู้ว่าเข้าห้องสำเร็จแล้ว
+                socket.emit('dispatch_room_joined', { room, rider_id: riderId });
+            } else {
+                socket.emit('error', { message: 'Cannot join dispatch room: rider ID not found' });
             }
         });
 
@@ -85,6 +89,10 @@ module.exports = (io) => {
                 const room = `merchant_${merchantId}_kds`;
                 socket.join(room);
                 console.log(`🍳 Kitchen เข้าสู่ห้อง KDS: ${room}`);
+                // แจ้งกลับให้ Client รู้ว่าเข้าห้องสำเร็จแล้ว
+                socket.emit('kds_room_joined', { room, merchant_id: merchantId });
+            } else {
+                socket.emit('error', { message: 'Cannot join KDS room: merchant ID not found' });
             }
         });
 

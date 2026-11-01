@@ -19,16 +19,39 @@ const createCustomer = async (customerData) => {
     return newCustomer;
 };
 
-// --- ฟังก์ชันที่เพิ่งเพิ่มใหม่ ---
-const findCustomerById = async (id) => {
-    return await knex('CUSTOMERS').where({ id }).first();
+const updateCustomer = async (id, data) => {
+    const [updated] = await knex('CUSTOMERS').where({ id }).update(data).returning('*');
+    return updated;
 };
 
-// --- ต้องแน่ใจว่าได้ export ฟังก์ชันทั้งหมดออกไปใช้งาน ---
+// ดึงข้อมูลลูกค้าพร้อมรายละเอียดหอพักและซอย
+const findCustomerById = async (id) => {
+    return await knex('CUSTOMERS')
+        .leftJoin('DORMITORIES', 'CUSTOMERS.dormitory_id', 'DORMITORIES.id')
+        .leftJoin('SOIS', 'DORMITORIES.soi_id', 'SOIS.id')
+        .select(
+            'CUSTOMERS.id',
+            'CUSTOMERS.username',
+            'CUSTOMERS.email',
+            'CUSTOMERS.phone',
+            'CUSTOMERS.room_number',
+            'CUSTOMERS.profile_image_url',
+            'CUSTOMERS.dormitory_id',
+            'CUSTOMERS.google_id',
+            'CUSTOMERS.line_id',
+            'DORMITORIES.name as dormitory_name',
+            'SOIS.id as soi_id',
+            'SOIS.name as soi_name'
+        )
+        .where('CUSTOMERS.id', id)
+        .first();
+};
+
 module.exports = { 
     findCustomerByUsername, 
     findCustomerByEmail, 
-    findCustomerBySocialId,
-    createCustomer,
+    findCustomerBySocialId, 
+    createCustomer, 
+    updateCustomer,
     findCustomerById 
 };
