@@ -1,4 +1,5 @@
 const knex = require('../db');
+const DEFAULT_PROMPTPAY_ID = '0986706625';
 
 const findMerchantByUsername = async (username) => {
     return await knex('MERCHANTS').where({ username }).first();
@@ -30,7 +31,10 @@ const linkMerchantSocial = async (merchantId, provider, socialId) => {
 };
 
 const createMerchant = async (merchantData) => {
-    const [newMerchant] = await knex('MERCHANTS').insert(merchantData).returning('*');
+    const [newMerchant] = await knex('MERCHANTS').insert({
+        ...merchantData,
+        promptpay_id: merchantData.promptpay_id || DEFAULT_PROMPTPAY_ID
+    }).returning('*');
     return newMerchant;
 };
 

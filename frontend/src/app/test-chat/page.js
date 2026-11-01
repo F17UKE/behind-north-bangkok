@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
+import { getApiBaseUrl } from "../../api/axiosInstance";
 
 /**
  * Test Chat Page (Next.js client)
@@ -9,7 +10,13 @@ import { io } from "socket.io-client";
  * - คาดว่า backend รองรับ events: join_order_room, leave_order_room, send_message, new_message
  */
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
+const getBackendUrl = () => {
+  const configuredUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
+  if (configuredUrl) return configuredUrl.replace(/\/$/, "");
+  const apiUrl = getApiBaseUrl();
+  if (apiUrl.startsWith("/")) return `${window.location.protocol}//${window.location.hostname}:5000`;
+  return apiUrl.replace(/\/api\/?$/, "").replace(/\/$/, "");
+};
 
 export default function TestChatPage() {
   const socketRef = useRef(null);
@@ -39,7 +46,7 @@ export default function TestChatPage() {
   // ป้องกันการเชื่อมต่อซ้ำ (React Strict Mode จะ mount/unmount สองครั้งใน dev)
   useEffect(() => {
     // สร้าง socket แต่ยังไม่ส่ง join ใด ๆ
-    const socket = io(BACKEND_URL, {
+    const socket = io(getBackendUrl(), {
       transports: ["websocket"],
       autoConnect: true,
     });

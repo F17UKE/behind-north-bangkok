@@ -285,12 +285,12 @@
 .customer-home.reveal-ready .editorial-card[data-scroll-reveal].reveal-visible { transform: translate3d(0,0,0) scale(1); }
 .customer-home .editorial-card:focus-visible,.customer-home button:focus-visible,.customer-home a:focus-visible { outline: 3px solid #f36b2188; outline-offset: 3px; }
 
-.mobile-app.orange:has(.customer-home) .bottom-nav.orange { z-index: 20; width: 100%; border-radius: 0; box-shadow: 0 -5px 22px #2b201308; }
+.mobile-app.orange .bottom-nav.orange { z-index: 20; width: 100%; border-radius: 0; box-shadow: 0 -5px 22px #2b201308; }
 .mobile-app.orange:has(.customer-home) .floating-cart-button { display: none; }
 
 @media (min-width: 1024px) {
-  .mobile-app.orange:has(.customer-home) .bottom-nav.orange { left: auto; right: 4vw; bottom: 24px; width: auto; max-width: 520px; padding: 9px 18px; border: 1px solid #eee9e4; border-radius: 99px; box-shadow: 0 12px 36px #27170f1c; transform: none; }
-  .mobile-app.orange:has(.customer-home) .bottom-nav.orange button { min-width: 86px; }
+  .mobile-app.orange .bottom-nav.orange { left: auto; right: 4vw; bottom: 24px; width: auto; max-width: 520px; padding: 9px 18px; border: 1px solid #eee9e4; border-radius: 99px; box-shadow: 0 12px 36px #27170f1c; transform: none; }
+  .mobile-app.orange .bottom-nav.orange button { min-width: 86px; }
 }
 
 @media (min-width: 768px) and (max-width: 1100px) {
@@ -391,7 +391,7 @@
   .repeat-order b { font-size: 12px; }
   .repeat-order small { font-size: 9px; }
   .repeat-order > button { gap: 8px; padding: 10px 11px; font-size: 10px; }
-  .mobile-app.orange:has(.customer-home) .bottom-nav.orange { padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
+  .mobile-app.orange .bottom-nav.orange { padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
 }
 
 @media (max-width: 360px) {
@@ -517,4 +517,71 @@
 @media (max-width: 479px) {
   .mobile-app.orange .mobile-page :is(.cart-shop b,.cart-row-info b,.recent-main b,.delivery-step b,.restaurant-line b,.profile-menu button) { font-size: 15px; }
   .mobile-app.orange .mobile-page :is(.cart-shop small,.cart-row-info small,.recent-main small,.recent-main span,.delivery-step small,.restaurant-line small) { font-size: 12px; }
+}
+
+/* Final shared-sized type for the storefront across desktop, tablet and phone. */
+.mobile-app.orange .customer-home { font-family: var(--app-font), "Anuphan", "Leelawadee UI", sans-serif; }
+.mobile-app.orange .customer-home :is(p,li) { font-size: 15px; line-height: 1.6; }
+.mobile-app.orange .customer-home small { font-size: 12px; line-height: 1.45; }
+.mobile-app.orange .customer-home .hero-copy h1 { font-size: clamp(52px, 6.2vw, 86px); line-height: .99; }
+.mobile-app.orange .storefront-brand > b { font-size: 18px; }
+.mobile-app.orange :is(.storefront-address b,.storefront-links button,.storefront-cart,.hero-cta,.customer-categories button,.section-heading > a) { font-size: 14px; }
+.mobile-app.orange :is(.hero-eyebrow,.hero-note,.section-kicker,.food-category,.shop-tag-row small,.menu-card-info small) { font-size: 12px; }
+.mobile-app.orange .hero-copy p { font-size: clamp(15px, 1.15vw, 17px); line-height: 1.7; }
+.mobile-app.orange .hero-photo-label > span { font-size: 12px; }
+.mobile-app.orange .hero-photo-label b { font-size: 17px; }
+.mobile-app.orange .hero-photo-label small { font-size: 12px; }
+.mobile-app.orange :is(.editorial-card-info > b,.menu-card-info > div:first-child b,.restaurant-menu-heading b) { font-size: 16px; }
+.mobile-app.orange :is(.food-meta,.menu-card-meta,.store-meta-line) { font-size: 13px; }
+.mobile-app.orange :is(.food-meta strong,.menu-card-meta b,.store-menu-item-bottom strong) { font-size: 14px; }
+.mobile-app.orange .cart-row-info small.cart-item-price { display: block; margin-top: 5px; color: var(--store-orange); font-size: 18px; font-weight: 750; line-height: 1.25; }
+.mobile-app.orange .summary>div:not(.total) { font-size: 15px; }
+.mobile-app.orange .summary>div:not(.total) b { font-size: 16px; }
+.mobile-app.orange .summary .total { font-size: 17px; }
+.mobile-app.orange .summary .total strong { font-size: 22px; line-height: 1.2; }
+.mobile-app.orange .summary-item > b { color: var(--store-orange); font-size: 17px; }
+.mobile-app.orange .recent-order-row .recent-right b { color: var(--store-orange); font-size: 19px; line-height: 1.25; }
+.mobile-app.orange .delivery-order-head strong { color: var(--store-orange); font-size: 22px; }
+.mobile-app.orange .orange-text { font-size: 20px; }
+.mobile-app.orange :is(.primary-btn,.secondary-btn) { min-height: 52px; border-radius: 999px; font-size: 16px; font-weight: 700; }
+.mobile-app.orange .qty button { border-radius: 50%; }
+
+/* Multi-store basket, with checkout kept to one merchant per order. */
+.mobile-app.orange .cart-store-group { margin: 14px 0; padding: 14px 16px 16px; border: 1px solid #eee7e0; border-radius: 20px; background: #fff; box-shadow: 0 8px 26px #39251408; }
+.mobile-app.orange .cart-store-group .cart-shop { padding: 3px 0 12px; border-bottom: 1px solid #f1ece7; }
+.mobile-app.orange .cart-store-checkout { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 14px; }
+.mobile-app.orange .cart-store-checkout>div { display: grid; gap: 4px; }
+.mobile-app.orange .cart-store-checkout small { color: #897e75; font-size: 12px; }
+.mobile-app.orange .cart-store-checkout b { color: #33271f; font-size: 18px; }
+.mobile-app.orange .cart-store-checkout .primary-btn { min-height: 44px; padding-inline: 18px; border-radius: 999px; font-size: 14px; }
+@media (max-width: 540px) {
+  .mobile-app.orange .cart-store-group { padding: 12px; }
+  .mobile-app.orange .cart-store-checkout { align-items: stretch; flex-direction: column; }
+  .mobile-app.orange .cart-store-checkout .primary-btn { width: 100%; }
+}
+.mobile-app.orange .recent-order-row { margin: 8px 0; padding: 14px; border: 1px solid #eee9e4; border-radius: 18px; background: #fff; }
+.mobile-app.orange .recent-order-card { margin: 10px 0; padding: 14px; border: 1px solid #eee9e4; border-radius: 20px; background: #fff; box-shadow: 0 8px 26px #39251408; }
+.mobile-app.orange .recent-order-info { display: grid; width: 100%; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 10px; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; }
+.mobile-app.orange .recent-order-info .recent-main { min-width: 0; }
+.mobile-app.orange .recent-order-info .recent-right { display: grid; justify-items: end; gap: 5px; }
+.mobile-app.orange .recent-order-info .recent-right>b { color: var(--store-orange); font-size: 17px; }
+.mobile-app.orange .recent-order-actions { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; margin-top: 13px; padding-top: 12px; border-top: 1px solid #f0eae4; }
+.mobile-app.orange .recent-order-actions button { display: inline-flex; min-width: 0; min-height: 40px; align-items: center; justify-content: center; gap: 7px; padding: 8px 12px; border-radius: 999px; font-size: 14px; font-weight: 700; white-space: nowrap; }
+.mobile-app.orange .recent-chat-button { border: 1px solid #f0c7ad; background: #fff1e8; color: #a64416; }
+.mobile-app.orange .recent-track-button { border: 1px solid #eee1d7; background: #fff8f2; color: #764327; }
+.mobile-app.orange .recent-order-actions button { transition: background-color .18s ease,border-color .18s ease,transform .18s ease; }
+.mobile-app.orange .recent-order-actions button:hover { transform: translateY(-1px); }
+.mobile-app.orange .recent-chat-button:hover { border-color: #e9a77e; background: #ffe6d7; }
+.mobile-app.orange .recent-track-button:hover { border-color: #e2c6b2; background: #fff1e7; }
+.mobile-app.orange .recent-track-button span { font-size: 16px; }
+.mobile-app.orange .recent-order-unread { margin-top: 10px; color: #c83e36; font-size: 12px; font-weight: 800; }
+@media (max-width: 540px) {
+  .mobile-app.orange .recent-order-card { padding: 12px; }
+  .mobile-app.orange .recent-order-info { grid-template-columns: auto minmax(0,1fr); }
+  .mobile-app.orange .recent-order-info .recent-right { grid-column: 2; grid-row: 2; justify-items: start; display: flex; align-items: center; gap: 8px; }
+}
+@media (max-width: 767px) {
+  .mobile-app.orange .customer-home .hero-copy h1 { font-size: clamp(46px, 13vw, 64px); }
+  .mobile-app.orange .hero-copy p { font-size: 15px; }
+  .mobile-app.orange .storefront-links button { font-size: 13px; }
 }

@@ -97,6 +97,13 @@ exports.sendMessage = async (req, res) => {
         ...newMessage,
         role: senderSubRole || (isMerchantSender ? 'STORE' : 'CUSTOMER')
       });
+      const recipientRoom = isMerchantSender
+        ? `customer_${access.order.customer_id}`
+        : `merchant_${access.order.merchant_id}`;
+      io.to(recipientRoom).emit('NEW_CHAT_MESSAGE', {
+        orderId: Number(order_id),
+        message: newMessage
+      });
     }
 
     res.status(201).json({

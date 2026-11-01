@@ -1,5 +1,18 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
 const AUTH_KEY = "behind-nb-auth";
+
+export function getApiBaseUrl() {
+  const configuredUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
+  if (configuredUrl) {
+    try {
+      const configuredHost = new URL(configuredUrl).hostname.toLowerCase().replace(/^\[|\]$/g, "");
+      if (["localhost", "127.0.0.1", "::1"].includes(configuredHost)) return "/api";
+    } catch {
+      // Keep relative API paths as configured.
+    }
+    return configuredUrl.replace(/\/$/, "");
+  }
+  return "/api";
+}
 
 export function getAuthSession() {
   if (typeof window === "undefined") return null;
@@ -37,7 +50,7 @@ export async function apiRequest(path, options = {}) {
     requestHeaders.Authorization = `Bearer ${session.token}`;
   }
 
-  const response = await fetch(`${API_URL}${path}`, {
+  const response = await fetch(`${getApiBaseUrl()}${path}`, {
     ...requestOptions,
     headers: requestHeaders,
     body: requestBody,

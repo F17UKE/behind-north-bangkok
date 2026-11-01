@@ -1,13 +1,25 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { io } from "socket.io-client";
 import Link from "next/link";
 import { BottomNav, MobileShell, SearchBar, TopBar, EmptyState } from "../../components/AppShell";
-import { statusLabel } from "../../data/orderStatus";
-import { apiData, apiRequest, clearAuthSession, getAuthSession, setAuthSession } from "../../api/axiosInstance";
+import { statusLabel, statusTone } from "../../data/orderStatus";
+import { apiData, apiRequest, clearAuthSession, getApiBaseUrl, getAuthSession, setAuthSession } from "../../api/axiosInstance";
 import "./CustomerStorefront.css";
 
 const categories = ["All", "Coffee & Tea", "On Order", "More"];
+const getSocketUrl = () => {
+  const apiUrl = getApiBaseUrl();
+  if (apiUrl.startsWith("/")) return `${window.location.protocol}//${window.location.hostname}:5000`;
+  return apiUrl.replace(/\/api\/?$/, "").replace(/\/$/, "");
+};
+const toChatMessage = (message) => ({ id: message.id, from: message.is_merchant_sender ? "store" : "me", text: message.content_text });
+async function markChatRead(orderId, messages) {
+  const latestMessageId = Math.max(0, ...messages.map((message) => Number(message.id) || 0));
+  if (latestMessageId) await apiRequest(`/orders/${orderId}/messages/read`, { method: "PUT", body: { message_id: latestMessageId } });
+  return latestMessageId;
+}
 
 function mapMenuItem(item, store) {
   return {
@@ -31,6 +43,7 @@ function mapOrder(order) {
     store: order.store_name,
     total: Number(order.total_amount),
     status: order.status,
+    unreadMessageCount: Number(order.unread_message_count || 0),
     date: new Date(order.created_at).toLocaleString("th-TH"),
     items: (order.items || []).map((item) => `${item.menu_name || "เมนู"} ×${item.quantity}`),
     raw: order,
@@ -47,8 +60,10 @@ export default function CustomerPage() {
   const [category, setCategory] = useState("All");
   const [heroIndex, setHeroIndex] = useState(0);
   const [cart, setCart] = useState([]);
+  const [checkoutMerchantId, setCheckoutMerchantId] = useState(null);
   const [orders, setOrders] = useState([]);
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [chatReturnScreen, setChatReturnScreen] = useState("delivery");
   const [profile, setProfile] = useState(null);
   const [authSession, setAuthSessionState] = useState(null);
   const [deliveryFee, setDeliveryFee] = useState(0);
@@ -60,6 +75,7 @@ export default function CustomerPage() {
   const [customNote, setCustomNote] = useState("");
   const [customQty, setCustomQty] = useState(1);
   const [chatMessages, setChatMessages] = useState([]);
+  const lastReadChatMessageId = useRef(0);
 
   const menuGallery = useMemo(() => stores.flatMap((store) => store.menu.map((item) => ({ ...item, storeName: store.name, store }))), [stores]);
   const heroMenuGallery = menuGallery.slice(0, 10);
@@ -127,6 +143,28 @@ export default function CustomerPage() {
   }, [authSession]);
 
   useEffect(() => {
+    if (authSession?.role !== "CUSTOMER" || !authSession.token) return undefined;
+    const socket = io(getSocketUrl(), { auth: { token: authSession.token } });
+    const handleNewChatMessage = async ({ orderId }) => {
+      try {
+        const refreshedOrders = apiData(await apiRequest("/orders")).map(mapOrder);
+        setOrders(refreshedOrders);
+        if (screen !== "chat" || Number(selectedOrder?.orderId) !== Number(orderId)) return;
+        const nextMessages = apiData(await apiRequest(`/orders/${orderId}/messages`)) || [];
+        setChatMessages(nextMessages.map(toChatMessage));
+        lastReadChatMessageId.current = Math.max(lastReadChatMessageId.current, await markChatRead(orderId, nextMessages));
+        setOrders((current) => current.map((order) => order.orderId === Number(orderId) ? { ...order, unreadMessageCount: 0 } : order));
+        setSelectedOrder((current) => current?.orderId === Number(orderId) ? { ...current, unreadMessageCount: 0 } : current);
+      } catch (error) { setActionError(error.message); }
+    };
+    socket.on("NEW_CHAT_MESSAGE", handleNewChatMessage);
+    return () => {
+      socket.off("NEW_CHAT_MESSAGE", handleNewChatMessage);
+      socket.disconnect();
+    };
+  }, [authSession?.role, authSession?.token, screen, selectedOrder?.orderId]);
+
+  useEffect(() => {
     if (screen !== "delivery" || authSession?.role !== "CUSTOMER") return undefined;
     const refreshCurrentOrder = async () => {
       try {
@@ -140,7 +178,11 @@ export default function CustomerPage() {
   }, [screen, authSession]);
 
   const cartCount = cart.reduce((s, x) => s + x.qty, 0);
-  const subtotal = cart.reduce((s, x) => s + x.price * x.qty, 0);
+  const unreadMessageTotal = orders.reduce((sum, order) => sum + Number(order.unreadMessageCount || 0), 0);
+  const cartSubtotal = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
+  const activeCheckoutMerchantId = cart.some((item) => String(item.storeId) === String(checkoutMerchantId)) ? checkoutMerchantId : cart[0]?.storeId ?? null;
+  const checkoutCart = cart.filter((item) => String(item.storeId) === String(activeCheckoutMerchantId));
+  const subtotal = checkoutCart.reduce((s, x) => s + x.price * x.qty, 0);
   const total = subtotal + deliveryFee;
 
   const filtered = useMemo(() => stores.filter((food) => {
@@ -151,7 +193,7 @@ export default function CustomerPage() {
   }), [search, category, stores, orders]);
 
   useEffect(() => {
-    const merchantId = cart[0]?.storeId;
+    const merchantId = activeCheckoutMerchantId;
     const dormitoryId = profile?.dormitory_id;
     if (!merchantId || !dormitoryId) {
       const timer = window.setTimeout(() => setDeliveryFee(0), 0);
@@ -162,7 +204,11 @@ export default function CustomerPage() {
       .then((response) => { if (!cancelled) setDeliveryFee(Number(apiData(response).delivery_fee) || 0); })
       .catch((error) => { if (!cancelled) setActionError(error.message); });
     return () => { cancelled = true; };
-  }, [cart, profile?.dormitory_id]);
+  }, [cart, activeCheckoutMerchantId, profile?.dormitory_id]);
+
+  useEffect(() => {
+    if (["update", "place"].includes(screen) && !checkoutCart.length) setScreen("basket");
+  }, [screen, checkoutCart.length]);
 
   useEffect(() => {
     if (screen !== "home") return undefined;
@@ -221,16 +267,56 @@ export default function CustomerPage() {
     if (screen !== "chat" || !selectedOrder?.orderId || authSession?.role !== "CUSTOMER") return undefined;
     let cancelled = false;
     apiRequest(`/orders/${selectedOrder.orderId}/messages`)
-      .then((messages) => {
-        if (!cancelled) setChatMessages(messages.map((message) => ({
-          id: message.id,
-          from: message.is_merchant_sender ? "store" : "me",
-          text: message.content_text,
-        })));
+      .then(async (messages) => {
+        if (!cancelled) {
+          setChatMessages(messages.map(toChatMessage));
+          lastReadChatMessageId.current = Math.max(lastReadChatMessageId.current, await markChatRead(selectedOrder.orderId, messages));
+          setOrders((current) => current.map((order) => order.orderId === selectedOrder.orderId ? { ...order, unreadMessageCount: 0 } : order));
+          setSelectedOrder((current) => current?.orderId === selectedOrder.orderId ? { ...current, unreadMessageCount: 0 } : current);
+        }
       })
       .catch((error) => { if (!cancelled) setActionError(error.message); });
     return () => { cancelled = true; };
   }, [screen, selectedOrder?.orderId, authSession]);
+
+  useEffect(() => {
+    lastReadChatMessageId.current = 0;
+  }, [selectedOrder?.orderId]);
+
+  useEffect(() => {
+    if (screen !== "chat" || authSession?.role !== "CUSTOMER" || !selectedOrder?.orderId) return undefined;
+    let cancelled = false;
+    const syncChat = async () => {
+      try {
+        const nextMessages = apiData(await apiRequest(`/orders/${selectedOrder.orderId}/messages`)) || [];
+        if (cancelled) return;
+        setChatMessages(nextMessages.map(toChatMessage));
+        const latestId = Math.max(0, ...nextMessages.map((message) => Number(message.id) || 0));
+        if (latestId > lastReadChatMessageId.current) {
+          lastReadChatMessageId.current = Math.max(lastReadChatMessageId.current, await markChatRead(selectedOrder.orderId, nextMessages));
+          if (!cancelled) {
+            setOrders((current) => current.map((order) => order.orderId === selectedOrder.orderId ? { ...order, unreadMessageCount: 0 } : order));
+            setSelectedOrder((current) => current?.orderId === selectedOrder.orderId ? { ...current, unreadMessageCount: 0 } : current);
+          }
+        }
+      } catch (error) { if (!cancelled) setActionError(error.message); }
+    };
+    const timer = window.setInterval(syncChat, 5000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [screen, authSession?.role, selectedOrder?.orderId]);
+
+  useEffect(() => {
+    if (screen !== "recent" || authSession?.role !== "CUSTOMER") return undefined;
+    let cancelled = false;
+    const refreshUnreadCounts = async () => {
+      try {
+        const nextOrders = apiData(await apiRequest("/orders")).map(mapOrder);
+        if (!cancelled) setOrders(nextOrders);
+      } catch (error) { if (!cancelled) setActionError(error.message); }
+    };
+    const timer = window.setInterval(refreshUnreadCounts, 10000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [screen, authSession?.role]);
 
   useEffect(() => {
     if (screen !== "save-place") return undefined;
@@ -281,22 +367,24 @@ export default function CustomerPage() {
   async function placeOrder() {
     if (authSession?.role !== "CUSTOMER") { setScreen("login"); return; }
     if (!profile?.dormitory_id || !profile?.room_number) { setScreen("save-place"); return; }
-    if (!cart.length || cart.some((item) => item.storeId !== cart[0].storeId)) return;
+    if (!checkoutCart.length || checkoutCart.some((item) => String(item.storeId) !== String(activeCheckoutMerchantId))) return;
     setActionError("");
     try {
       await apiRequest("/orders", {
         method: "POST",
         body: {
-          merchantId: Number(cart[0].storeId),
+          merchantId: Number(activeCheckoutMerchantId),
           dormitoryId: Number(profile.dormitory_id),
           roomNumber: profile.room_number,
-          items: cart.map((item) => ({ menu_item_id: Number(item.id), quantity: Number(item.qty), note: item.note || "", choices: item.choices || [] })),
+          items: checkoutCart.map((item) => ({ menu_item_id: Number(item.id), quantity: Number(item.qty), note: item.note || "", choices: item.choices || [] })),
         },
       });
       const refreshed = apiData(await apiRequest("/orders")).map(mapOrder);
       setOrders(refreshed);
       setSelectedOrder(refreshed[0] || null);
-      setCart([]);
+      const remainingCart = cart.filter((item) => String(item.storeId) !== String(activeCheckoutMerchantId));
+      setCart(remainingCart);
+      setCheckoutMerchantId(remainingCart[0]?.storeId ?? null);
       setScreen("recent");
     } catch (error) {
       setActionError(error.message);
@@ -310,6 +398,9 @@ export default function CustomerPage() {
       const response = await apiRequest(`/orders/${selectedOrder.orderId}/messages`, { method: "POST", body: { contentText: chatText.trim(), messageType: "TEXT" } });
       const message = apiData(response);
       setChatMessages((current) => [...current, { id: message.id, from: "me", text: message.content_text }]);
+      lastReadChatMessageId.current = Math.max(lastReadChatMessageId.current, await markChatRead(selectedOrder.orderId, [message]));
+      setOrders((current) => current.map((order) => order.orderId === selectedOrder.orderId ? { ...order, unreadMessageCount: 0 } : order));
+      setSelectedOrder((current) => current?.orderId === selectedOrder.orderId ? { ...current, unreadMessageCount: 0 } : current);
     } catch (error) {
       setActionError(error.message);
       return;
@@ -366,25 +457,31 @@ export default function CustomerPage() {
     setScreen("store");
   }
 
+  function openOrderChat(order, returnScreen = "recent") {
+    setSelectedOrder(order);
+    setChatReturnScreen(returnScreen);
+    setScreen("chat");
+  }
+
   return (
     <MobileShell>
       <div key={screen} className="mobile-page customer-page-shell screen-enter">
         {actionError && <div className="api-error" role="alert"><span>{actionError}</span><button onClick={() => setActionError("")} aria-label="ปิด">×</button></div>}
         {screen === "home" && (storesLoading ? <EmptyState title="กำลังโหลดร้านค้า" text="กำลังดึงร้านและเมนูจากระบบ" /> : featured ? <CustomerHome search={search} setSearch={setSearch} category={category} setCategory={setCategory} foods={filtered} menu={menuGallery} heroMenuGallery={heroMenuGallery} featured={featured} heroIndex={heroIndex % heroMenuGallery.length} setHeroIndex={setHeroIndex} heroCount={heroMenuGallery.length} cartCount={cartCount} onStore={openStore} onCart={() => setScreen("basket")} onOrders={() => setScreen(authSession?.role === "CUSTOMER" ? "recent" : "login")} onProfile={() => setScreen("profile")} /> : <EmptyState title="ยังไม่มีร้านที่เปิดให้บริการ" text={loadError || "ร้านที่อนุมัติและเปิดให้บริการจะแสดงที่นี่"} />)}
         {screen === "store" && <CustomerStore store={selectedStore} cartCount={cartCount} onBack={() => setScreen("home")} onCustomize={openCustomization} onBasket={() => setScreen("basket")} />}
-        {screen === "basket" && <Basket cart={cart} subtotal={subtotal} deliveryFee={deliveryFee} total={total} changeQty={changeQty} onBack={() => setScreen("store")} onNext={() => setScreen("update")} />}
-        {screen === "update" && <UpdateBasket cart={cart} total={total} profile={profile} onEditAddress={() => setScreen(authSession?.role === "CUSTOMER" ? "save-place" : "login")} changeQty={changeQty} onBack={() => setScreen("basket")} onNext={() => { if (authSession?.role !== "CUSTOMER") setScreen("login"); else if (!profile?.dormitory_id || !profile?.room_number) setScreen("save-place"); else setScreen("place"); }} />}
-        {screen === "place" && <PlaceOrder cart={cart} profile={profile} subtotal={subtotal} deliveryFee={deliveryFee} total={total} onBack={() => setScreen("update")} onPlace={placeOrder} />}
-        {screen === "recent" && <Recent orders={orders} onOpen={(order) => { setSelectedOrder(order); setScreen("delivery"); }} onHome={() => setScreen("home")} />}
-        {screen === "delivery" && <Delivery order={selectedOrder} onBack={() => setScreen("recent")} onChat={() => setScreen("chat")} onPaid={async () => { const rows = apiData(await apiRequest("/orders")).map(mapOrder); setOrders(rows); setSelectedOrder(rows.find((order) => order.orderId === selectedOrder?.orderId) || rows[0] || null); }} />}
+        {screen === "basket" && <Basket cart={cart} changeQty={changeQty} onBack={() => setScreen("home")} onNext={(merchantId) => { setCheckoutMerchantId(merchantId); setScreen("update"); }} />}
+        {screen === "update" && <UpdateBasket cart={checkoutCart} total={total} profile={profile} onEditAddress={() => setScreen(authSession?.role === "CUSTOMER" ? "save-place" : "login")} changeQty={changeQty} onBack={() => setScreen("basket")} onNext={() => { if (authSession?.role !== "CUSTOMER") setScreen("login"); else if (!profile?.dormitory_id || !profile?.room_number) setScreen("save-place"); else setScreen("place"); }} />}
+        {screen === "place" && <PlaceOrder cart={checkoutCart} profile={profile} subtotal={subtotal} deliveryFee={deliveryFee} total={total} onBack={() => setScreen("update")} onPlace={placeOrder} />}
+        {screen === "recent" && <Recent orders={orders} onOpen={(order) => { setSelectedOrder(order); setScreen("delivery"); }} onChat={(order) => openOrderChat(order, "recent")} onHome={() => setScreen("home")} />}
+        {screen === "delivery" && <Delivery order={selectedOrder} onBack={() => setScreen("recent")} onChat={() => openOrderChat(selectedOrder, "delivery")} onPaid={async () => { const rows = apiData(await apiRequest("/orders")).map(mapOrder); setOrders(rows); setSelectedOrder(rows.find((order) => order.orderId === selectedOrder?.orderId) || rows[0] || null); }} />}
         {screen === "profile" && <Profile key={`${profile?.id || "guest"}-${profile?.username || ""}-${profile?.phone || ""}`} profile={profile} savedPlace={savedPlace} signedIn={authSession?.role === "CUSTOMER"} onBack={() => setScreen("home")} onSave={() => setScreen(authSession?.role === "CUSTOMER" ? "save-place" : "login")} onLogin={() => setScreen("login")} onLogout={() => { clearAuthSession(); setAuthSessionState(null); setProfile(null); }} onUpdateProfile={saveProfile} />}
         {screen === "save-place" && <SavePlace profile={profile} dormitories={dormitories} onBack={() => setScreen("profile")} onSave={savePlace} />}
-        {screen === "chat" && <CustomerChat storeName={selectedOrder?.store} messages={chatMessages} value={chatText} setValue={setChatText} onSend={sendChat} onBack={() => setScreen("delivery")} />}
+        {screen === "chat" && <CustomerChat storeName={selectedOrder?.store} messages={chatMessages} value={chatText} setValue={setChatText} onSend={sendChat} onBack={() => setScreen(chatReturnScreen)} />}
         {screen === "login" && <CustomerAuth mode="login" onBack={() => setScreen("profile")} onSubmit={authenticate} onSignUp={() => setScreen("signup")} />}
         {screen === "signup" && <CustomerAuth mode="signup" onBack={() => setScreen("profile")} onSubmit={authenticate} onLogin={() => setScreen("login")} />}
       </div>
-      <BottomNav tone="orange" active={screen === "profile" ? "profile" : ["recent", "delivery"].includes(screen) ? "order" : "home"} onChange={nav} items={[{ key: "home", label: "หน้าแรก", icon: "⌂" }, { key: "order", label: "ออเดอร์", icon: "▣" }, { key: "profile", label: "โปรไฟล์", icon: "♙" }, { key: "cart", label: cartCount ? `ตะกร้า (${cartCount})` : "ตะกร้า", icon: "🛒" }]} />
-      <button className="floating-cart-button" onClick={() => setScreen("basket")}>🛒 {cartCount ? `${cartCount} · ${total} ฿` : "0 ฿"}</button>
+      <BottomNav tone="orange" active={screen === "profile" ? "profile" : ["recent", "delivery"].includes(screen) ? "order" : ["basket", "update", "place"].includes(screen) ? "cart" : "home"} onChange={nav} items={[{ key: "home", label: "หน้าแรก", icon: "⌂" }, { key: "order", label: "ออเดอร์", icon: "▣", badge: unreadMessageTotal }, { key: "profile", label: "โปรไฟล์", icon: "♙" }, { key: "cart", label: cartCount ? `ตะกร้า (${cartCount})` : "ตะกร้า", icon: "🛒" }]} />
+      {screen === "store" && <button className="floating-cart-button" onClick={() => setScreen("basket")}>🛒 {cartCount ? `${cartCount} · ${cartSubtotal} ฿` : "0 ฿"}</button>}
       {customItem && <CustomizationModal item={customItem} groups={customItem.option_groups || []} selected={customAddons} setSelected={setCustomAddons} note={customNote} setNote={setCustomNote} qty={customQty} setQty={setCustomQty} onClose={() => setCustomItem(null)} onConfirm={confirmCustomization} />}
     </MobileShell>
   );
@@ -445,8 +542,22 @@ function CustomizationModal({ item, groups, selected, setSelected, note, setNote
   const missingRequired = groups.some((group) => group.is_required && !group.choices?.some((choice) => selected.includes(choice.id)));
   return <div className="customize-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="customize-dialog" role="dialog" aria-modal="true" aria-labelledby="customize-title"><button className="customize-close" onClick={onClose} aria-label="ปิด">×</button><div className="customize-product">{item.image ? <img src={item.image} alt={item.name} /> : <span className="menu-placeholder">🍽️</span>}<div><small>ปรับแต่งเมนู</small><h2 id="customize-title">{item.name}</h2><span>฿{item.price}</span></div></div>{groups.map((group) => <div className="customize-group" key={group.id}><div className="customize-section-heading"><b>{group.name}</b><small>{group.is_required ? "จำเป็นต้องเลือก" : group.allow_multiple ? "เลือกได้หลายรายการ" : "เลือกได้หนึ่งรายการ"}</small></div><div className="customize-options">{(group.choices || []).map((option) => <label className="customize-option" key={option.id}><input type={group.allow_multiple ? "checkbox" : "radio"} name={`option-group-${group.id}`} checked={selected.includes(option.id)} onChange={() => toggle(group, option.id)} /><span>{option.name}</span><b>+฿{option.extra_price}</b></label>)}</div></div>)}{!groups.length && <p>เมนูนี้ไม่มีตัวเลือกเพิ่มเติม</p>}<label className="customize-note"><b>หมายเหตุถึงร้าน</b><textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="ระบุรายละเอียดเพิ่มเติม" maxLength={180} /><small>{note.length}/180</small></label><div className="customize-footer"><div className="qty customize-qty"><button onClick={() => setQty(Math.max(1, qty - 1))}>−</button><span>{qty}</span><button onClick={() => setQty(qty + 1)}>＋</button></div><button className="primary-btn" disabled={missingRequired} onClick={onConfirm}>เพิ่มลงตะกร้า · ฿{(Number(item.price) + addonsTotal) * qty}</button></div></section></div>;
 }
-function Basket({ cart, subtotal, deliveryFee, total, changeQty, onBack, onNext }) {
-  return <><TopBar title="ตะกร้าของฉัน" onBack={onBack} />{cart[0] && <div className="cart-shop"><CartStoreThumb store={cart[0].store} /><div><b>{cart[0]?.storeName}</b><small>ค่าส่งคำนวณจากที่อยู่จัดส่ง</small></div></div>}{cart.length ? cart.map((item) => <div className="cart-row" key={item.cartLineId || item.id}><div className="food-thumb cart-item-image">{item.image ? <img src={item.image} alt={item.name} /> : <span>🍽️</span>}</div><div className="cart-row-info"><b>{item.name}</b>{item.selectedAddons?.length > 0 && <small>เพิ่ม: {item.selectedAddons.map((option) => option.name).join(", ")}</small>}{item.note && <small>หมายเหตุ: {item.note}</small>}<small>{item.price} ฿</small></div><div className="qty"><button onClick={() => changeQty(item.cartLineId || item.id,-1)}>−</button><span>{item.qty}</span><button onClick={() => changeQty(item.cartLineId || item.id,1)}>＋</button></div></div>) : <EmptyState title="ตะกร้ายังว่าง" text="กลับไปที่ร้านเพื่อเลือกเมนู" />}<Summary subtotal={subtotal} delivery={deliveryFee} total={total} /><button className="primary-btn" disabled={!cart.length} onClick={onNext}>ดำเนินการต่อ →</button></>;
+function Basket({ cart, changeQty, onBack, onNext }) {
+  const storeGroups = [...cart.reduce((groups, item) => {
+    const key = String(item.storeId);
+    if (!groups.has(key)) groups.set(key, { storeId: item.storeId, store: item.store, name: item.storeName || "ร้านอาหาร", items: [] });
+    groups.get(key).items.push(item);
+    return groups;
+  }, new Map()).values()];
+
+  return <><TopBar title="ตะกร้าของฉัน" onBack={onBack} />{storeGroups.length ? storeGroups.map((group) => {
+    const storeSubtotal = group.items.reduce((sum, item) => sum + item.price * item.qty, 0);
+    return <section className="cart-store-group" key={group.storeId}>
+      <div className="cart-shop"><CartStoreThumb store={group.store} /><div><b>{group.name}</b><small>{group.items.reduce((sum, item) => sum + item.qty, 0)} รายการ · สั่งแยกตามร้าน</small></div></div>
+      {group.items.map((item) => <div className="cart-row" key={item.cartLineId || item.id}><div className="food-thumb cart-item-image">{item.image ? <img src={item.image} alt={item.name} /> : <span>🍽️</span>}</div><div className="cart-row-info"><b>{item.name}</b>{item.selectedAddons?.length > 0 && <small>เพิ่ม: {item.selectedAddons.map((option) => option.name).join(", ")}</small>}{item.note && <small>หมายเหตุ: {item.note}</small>}<small className="cart-item-price">{item.price} ฿</small></div><div className="qty"><button onClick={() => changeQty(item.cartLineId || item.id,-1)}>−</button><span>{item.qty}</span><button onClick={() => changeQty(item.cartLineId || item.id,1)}>＋</button></div></div>)}
+      <div className="cart-store-checkout"><div><small>ยอดอาหารร้านนี้</small><b>{storeSubtotal.toLocaleString("th-TH")} ฿</b></div><button className="primary-btn" onClick={() => onNext(group.storeId)}>สั่งจากร้านนี้ →</button></div>
+    </section>;
+  }) : <EmptyState title="ตะกร้ายังว่าง" text="กลับไปที่ร้านเพื่อเลือกเมนู" />}</>;
 }
 function UpdateBasket({ cart, total, profile, onEditAddress, changeQty, onBack, onNext }) {
   return <><TopBar title="ตรวจสอบตะกร้า" onBack={onBack} action={<b className="orange-text">{total} ฿</b>} /><div className="order-card"><div className="cart-shop"><CartStoreThumb store={cart[0]?.store} /><div><b>{cart[0]?.storeName || "เลือกร้านค้า"}</b><small>{profile?.dormitory_name ? `${profile.dormitory_name} · ห้อง ${profile.room_number || "—"}` : "ยังไม่ได้ตั้งค่าที่อยู่จัดส่ง"}</small></div></div>{cart.map((item) => <div className="simple-line" key={item.cartLineId || item.id}><div><span>{item.name} ×{item.qty}</span>{item.selectedAddons?.length > 0 && <small className="order-custom-detail"> + {item.selectedAddons.map((option) => option.name).join(", ")}</small>}{item.note && <small className="order-custom-detail">หมายเหตุ: {item.note}</small>}</div><div className="qty"><button onClick={() => changeQty(item.cartLineId || item.id,-1)}>−</button><span>{item.qty}</span><button onClick={() => changeQty(item.cartLineId || item.id,1)}>＋</button></div></div>)}</div><button className="secondary-btn" onClick={onEditAddress}>{profile?.dormitory_id ? "เปลี่ยนที่อยู่จัดส่ง" : "เพิ่มที่อยู่จัดส่ง"}</button><button className="primary-btn" onClick={onNext}>ตรวจสอบคำสั่งซื้อ → {total} ฿</button></>;
@@ -458,18 +569,25 @@ function CartStoreThumb({ store }) {
   return <div className="food-thumb cart-store-image">{store?.store_image_url ? <img src={store.store_image_url} alt={store.store_name} /> : <span>🏪</span>}</div>;
 }
 function Summary({ subtotal, delivery, total }) { return <div className="summary"><div><span>Subtotal</span><b>{subtotal} ฿</b></div><div><span>Delivery fee</span><b>{delivery} ฿</b></div><hr/><div className="total"><span>Total</span><strong>{total} ฿</strong></div></div>; }
-function Recent({ orders, onOpen, onHome }) {
-  return <><TopBar title="ออเดอร์ของฉัน" onBack={onHome} /><div className="list-title"><b>ประวัติคำสั่งซื้อ</b><span>{orders.length}</span></div>{orders.length ? orders.map((order) => <button className="recent-order-row" key={order.orderId} onClick={() => onOpen(order)}><div className="food-thumb">{order.status === "COMPLETED" ? "🍽️" : "🍛"}</div><div className="recent-main"><b>{order.store}</b><small>{order.items.join(" · ")}</small><span>{order.date}</span></div><div className="recent-right"><b>{order.total} ฿</b><small className={order.status === "COMPLETED" ? "green-text" : "orange-text"}>{statusLabel[order.status]}</small></div></button>) : <EmptyState title="ยังไม่มีคำสั่งซื้อ" text="ออเดอร์ที่ส่งไปยังร้านจะแสดงที่นี่" />}</>;
+function Recent({ orders, onOpen, onChat, onHome }) {
+  return <><TopBar title="ออเดอร์ของฉัน" onBack={onHome} /><div className="list-title"><b>ประวัติคำสั่งซื้อ</b><span>{orders.length}</span></div>{orders.length ? orders.map((order) => <article className="recent-order-card" key={order.orderId}>
+    <button className="recent-order-info" onClick={() => onOpen(order)}><div className="food-thumb">{order.status === "COMPLETED" ? "🍽️" : "🍛"}</div><div className="recent-main"><b>{order.store}</b><small>{order.items.join(" · ")}</small><span>{order.date}</span></div><div className="recent-right"><b>{order.total} ฿</b><small className={`order-status-message ${statusTone[order.status] || "yellow"}`}>{statusLabel[order.status]}</small></div></button>
+    <div className="recent-order-actions"><button className="recent-chat-button" aria-label={`แชทกับร้าน ${order.store}`} onClick={() => onChat(order)}>แชท{order.unreadMessageCount > 0&&<span className="unread-chat-badge">{order.unreadMessageCount > 9 ? "9+" : order.unreadMessageCount}</span>}</button><button className="recent-track-button" onClick={() => onOpen(order)}>ติดตามออเดอร์ <span>→</span></button></div>
+    {order.unreadMessageCount > 0&&<div className="recent-order-unread">● มีข้อความใหม่ {order.unreadMessageCount} ข้อความ</div>}
+  </article>) : <EmptyState title="ยังไม่มีคำสั่งซื้อ" text="ออเดอร์ที่ส่งไปยังร้านจะแสดงที่นี่" />}</>;
 }
 function Delivery({ order, onBack, onChat, onPaid }) {
   const [qr, setQr] = useState("");
+  const [qrAmount, setQrAmount] = useState(null);
+  const [promptpayId, setPromptpayId] = useState("");
   const [slip, setSlip] = useState(null);
   const [paying, setPaying] = useState(false);
   const [paymentError, setPaymentError] = useState("");
   useEffect(() => {
     let cancelled = false;
+    setQr(""); setQrAmount(null); setPromptpayId("");
     if (order?.status !== "PENDING_PAYMENT" || !order.orderId) return undefined;
-    apiRequest(`/orders/${order.orderId}/payment/qr`).then((response) => { if (!cancelled) setQr(response.qr_image_base64 || ""); }).catch((error) => { if (!cancelled) setPaymentError(error.message); });
+    apiRequest(`/orders/${order.orderId}/payment/qr`).then((response) => { if (!cancelled) { setQr(response.qr_image_base64 || ""); setQrAmount(Number(response.amount)); setPromptpayId(response.promptpay_id || ""); } }).catch((error) => { if (!cancelled) setPaymentError(error.message); });
     return () => { cancelled = true; };
   }, [order?.orderId, order?.status]);
   async function submitSlip(event) {
@@ -483,13 +601,13 @@ function Delivery({ order, onBack, onChat, onPaid }) {
     finally { setPaying(false); }
   }
   const steps = ["PENDING_ACCEPT", "PENDING_PAYMENT", "PAID", "PREPARING", "READY_FOR_DELIVERY", "IN_DELIVERY", "COMPLETED"];
-  const index = Math.max(0, steps.indexOf(order?.status));
+  const index = steps.indexOf(order?.status);
   if (!order) return <><TopBar title="ติดตามออเดอร์" onBack={onBack} /><EmptyState title="ไม่พบคำสั่งซื้อ" text="กลับไปเลือกออเดอร์จากรายการ" /></>;
   async function cancelOrder() {
     try { await apiRequest(`/orders/${order.orderId}/status`, { method:"PUT", body:{ status:"CANCELLED_BY_CUSTOMER" } }); await onPaid?.(); }
     catch (error) { setPaymentError(error.message); }
   }
-  return <><TopBar title={`Order ${order.id}`} onBack={onBack} /><div className="delivery-card"><div className="delivery-order-head"><div><b>Order {order.id}</b><small>{order.date}</small></div><strong>{order.total} ฿</strong></div>{steps.map((step, i) => <div className={`delivery-step ${i <= index ? "done" : ""}`} key={step}><div className="step-dot">{i <= index ? "✓" : "•"}</div><div><b>{statusLabel[step]}</b><small>{i === index ? "สถานะปัจจุบัน" : i < index ? "เสร็จแล้ว" : "รอดำเนินการ"}</small></div></div>)}</div>{order.status === "PENDING_PAYMENT" && <div className="payment-card"><b>ชำระเงินด้วย PromptPay</b>{qr&&<img src={qr} alt="QR สำหรับชำระเงิน" style={{display:"block",width:220,maxWidth:"100%",margin:"14px auto"}}/>}<p>ยอดชำระรวม {order.total} บาท</p><p>โหมดทดลอง: ระบบรับรูปที่อัปโหลดโดยไม่ตรวจสอบความถูกต้องของสลิป</p><form onSubmit={submitSlip}><label>แนบรูปสลิป<input type="file" accept="image/jpeg,image/png,image/webp" required onChange={(event)=>setSlip(event.target.files?.[0]||null)}/></label><button className="primary-btn" disabled={paying||!slip}>{paying?"กำลังอัปโหลดรูป…":"ส่งรูปสลิป"}</button></form>{paymentError&&<p role="alert">{paymentError}</p>}</div>}{["PENDING_ACCEPT","PENDING_PAYMENT"].includes(order.status)&&<button className="secondary-btn" onClick={cancelOrder}>ยกเลิกออเดอร์</button>}<div className="restaurant-line"><div className="food-thumb">🏪</div><div><b>{order.store}</b><small>รายละเอียดจากคำสั่งซื้อ</small></div></div><button className="secondary-btn" onClick={onChat}>แชทกับร้าน</button></>;
+  return <><TopBar title={`Order ${order.id}`} onBack={onBack} /><div className="delivery-card"><div className="delivery-order-head"><div><b>Order {order.id}</b><small>{order.date}</small><span className={`order-status-banner ${statusTone[order.status] || "yellow"}`}>{statusLabel[order.status]}</span></div><strong>{order.total} ฿</strong></div>{steps.map((step, i) => <div className={`delivery-step ${i <= index ? "done" : ""}`} key={step}><div className="step-dot">{i <= index ? "✓" : "•"}</div><div><b>{statusLabel[step]}</b><small>{i === index ? "สถานะปัจจุบัน" : i < index ? "เสร็จแล้ว" : "รอดำเนินการ"}</small></div></div>)}</div>{order.status === "PENDING_PAYMENT" && <div className="payment-card"><b>ชำระเงินด้วย PromptPay</b>{qr&&<img src={qr} alt="QR สำหรับชำระเงิน" style={{display:"block",width:220,maxWidth:"100%",margin:"14px auto"}}/>}{promptpayId&&<p>PromptPay: {promptpayId}</p>}<p>ยอดชำระรวม {Number(qrAmount ?? order.total).toLocaleString("th-TH")} บาท</p><p>สแกน QR นี้เพื่อชำระยอดของออเดอร์นี้</p><form onSubmit={submitSlip}><label>แนบรูปสลิป<input type="file" accept="image/jpeg,image/png,image/webp" required onChange={(event)=>setSlip(event.target.files?.[0]||null)}/></label><button className="primary-btn status-action-green" disabled={paying||!slip}>{paying?"กำลังอัปโหลดรูป…":"ส่งรูปสลิป"}</button></form>{paymentError&&<p role="alert">{paymentError}</p>}</div>}{["PENDING_ACCEPT","PENDING_PAYMENT"].includes(order.status)&&<button className="secondary-btn order-danger-btn" onClick={cancelOrder}>ยกเลิกออเดอร์</button>}<div className="restaurant-line"><div className="food-thumb">🏪</div><div><b>{order.store}</b><small>รายละเอียดจากคำสั่งซื้อ</small></div></div><button className="secondary-btn order-chat-button" onClick={onChat}>แชทกับร้าน{order.unreadMessageCount > 0&&<span className="unread-chat-badge">{order.unreadMessageCount > 9 ? "9+" : order.unreadMessageCount}</span>}</button></>;
 }
 function Profile({ profile, savedPlace, signedIn, onBack, onSave, onLogin, onLogout, onUpdateProfile }) {
   const [username, setUsername] = useState(profile?.username || "");
@@ -503,7 +621,13 @@ function SavePlace({ profile, dormitories, onBack, onSave }) {
   return <><TopBar title="ที่อยู่จัดส่ง" onBack={onBack} /><form className="form-card" onSubmit={(event)=>{event.preventDefault();onSave({dormitory_id:dormitoryId,room_number:roomNumber,phone});}}><h2>เลือกหอพักและห้อง</h2><label>หอพัก<select value={dormitoryId} onChange={(event)=>setDormitoryId(event.target.value)} required><option value="">เลือกหอพัก</option>{dormitories.map((dormitory)=><option key={dormitory.id} value={dormitory.id}>{dormitory.name}</option>)}</select></label><label>เลขห้อง<input value={roomNumber} onChange={(event)=>setRoomNumber(event.target.value)} maxLength={20} required /></label><label>เบอร์โทรศัพท์<input value={phone} onChange={(event)=>setPhone(event.target.value)} inputMode="tel" maxLength={20} /></label><button className="primary-btn" type="submit">บันทึกที่อยู่</button></form></>;
 }
 function CustomerChat({ storeName, messages, value, setValue, onSend, onBack }) {
-  return <><div className="chat-top"><button onClick={onBack}>‹</button><div><b>{storeName || "ครัวหลังมอ"}</b><small>online</small></div><span>☎</span></div><div className="chat-messages">{messages.map((m,i)=><div className={`chat-bubble ${m.from === "me" ? "me" : "store"}`} key={i}>{m.text}</div>)}</div><form className="chat-compose" onSubmit={onSend}><input value={value} onChange={(e)=>setValue(e.target.value)} placeholder="เขียนข้อความ..."/><button>➤</button></form></>;
+  const messageListRef = useRef(null);
+  const latestMessageId = messages[messages.length - 1]?.id;
+  useEffect(() => {
+    const messageList = messageListRef.current;
+    if (messageList) messageList.scrollTop = messageList.scrollHeight;
+  }, [latestMessageId]);
+  return <><div className="chat-top"><button onClick={onBack}>‹</button><div><b>{storeName || "ครัวหลังมอ"}</b><small>online</small></div><span>☎</span></div><div ref={messageListRef} className="chat-messages">{messages.map((m,i)=><div className={`chat-bubble ${m.from === "me" ? "me" : "store"}`} key={m.id || i}>{m.text}</div>)}</div><form className="chat-compose" onSubmit={onSend}><input value={value} onChange={(e)=>setValue(e.target.value)} placeholder="เขียนข้อความ..."/><button>➤</button></form></>;
 }
 function CustomerAuth({ mode, onBack, onSubmit, onSignUp, onLogin }) {
   const [email, setEmail] = useState("");
@@ -519,5 +643,5 @@ function CustomerAuth({ mode, onBack, onSubmit, onSignUp, onLogin }) {
     setError(message);
     setBusy(false);
   }
-  return <div className="auth-page"><button className="auth-back" onClick={onBack} type="button">‹</button><div className="auth-art">🍕 🍟 🥤 🍗</div><form className="auth-panel" onSubmit={submit}><h2>{mode === "login" ? "เข้าสู่ระบบ" : "สมัครสมาชิก"}</h2><input type="email" value={email} onChange={(event)=>setEmail(event.target.value)} placeholder="อีเมล" autoComplete="email" required /><input value={password} onChange={(event)=>setPassword(event.target.value)} placeholder="รหัสผ่าน อย่างน้อย 6 ตัว" type="password" minLength={6} autoComplete={mode === "login" ? "current-password" : "new-password"} required />{mode === "signup" && <input value={confirmation} onChange={(event)=>setConfirmation(event.target.value)} placeholder="ยืนยันรหัสผ่าน" type="password" required />}{error && <small role="alert">{error}</small>}<button className="primary-btn" disabled={busy}>{busy ? "กำลังดำเนินการ…" : mode === "login" ? "เข้าสู่ระบบ" : "สมัครสมาชิก"}</button><button className="text-link" type="button" onClick={mode === "login" ? onSignUp : onLogin}>{mode === "login" ? "สมัครสมาชิก" : "มีบัญชีแล้ว? เข้าสู่ระบบ"}</button></form></div>;
+  return <div className="auth-page role-auth-layout"><button className="auth-back" onClick={onBack} type="button">‹</button><div className="auth-art">🍕 🍟 🥤 🍗</div><form className="auth-panel role-auth-card" onSubmit={submit}><h2>{mode === "login" ? "เข้าสู่ระบบ" : "สมัครสมาชิก"}</h2><input type="email" value={email} onChange={(event)=>setEmail(event.target.value)} placeholder="อีเมล" autoComplete="email" required /><input value={password} onChange={(event)=>setPassword(event.target.value)} placeholder="รหัสผ่าน อย่างน้อย 6 ตัว" type="password" minLength={6} autoComplete={mode === "login" ? "current-password" : "new-password"} required />{mode === "signup" && <input value={confirmation} onChange={(event)=>setConfirmation(event.target.value)} placeholder="ยืนยันรหัสผ่าน" type="password" required />}{error && <small role="alert">{error}</small>}<button className="primary-btn" disabled={busy}>{busy ? "กำลังดำเนินการ…" : mode === "login" ? "เข้าสู่ระบบ" : "สมัครสมาชิก"}</button><button className="text-link" type="button" onClick={mode === "login" ? onSignUp : onLogin}>{mode === "login" ? "สมัครสมาชิก" : "มีบัญชีแล้ว? เข้าสู่ระบบ"}</button></form></div>;
 }

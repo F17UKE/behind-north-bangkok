@@ -64,16 +64,42 @@ class MerchantManagementRepository {
   }
 
   // --- 3. Option Groups & Choices ---
-  async createOptionGroup(menuId, groupData) {
+  async createOptionGroup(merchantId, menuId, groupData) {
+    const menu = await db('MENU_ITEMS').where({ id: menuId, merchant_id: merchantId }).first('id');
+    if (!menu) return null;
     return await db('MENU_OPTION_GROUPS')
       .insert({ ...groupData, menu_item_id: menuId })
       .returning('*');
   }
 
-  async createOptionChoice(groupId, choiceData) {
+  async createOptionChoice(merchantId, groupId, choiceData) {
+    const group = await db('MENU_OPTION_GROUPS as groups')
+      .join('MENU_ITEMS as menus', 'menus.id', 'groups.menu_item_id')
+      .where({ 'groups.id': groupId, 'menus.merchant_id': merchantId })
+      .first('groups.id');
+    if (!group) return null;
     return await db('MENU_OPTION_CHOICES')
       .insert({ ...choiceData, option_group_id: groupId })
       .returning('*');
+  }
+
+  async deleteOptionGroup(merchantId, groupId) {
+    const group = await db('MENU_OPTION_GROUPS as groups')
+      .join('MENU_ITEMS as menus', 'menus.id', 'groups.menu_item_id')
+      .where({ 'groups.id': groupId, 'menus.merchant_id': merchantId })
+      .first('groups.id');
+    if (!group) return 0;
+    return db('MENU_OPTION_GROUPS').where({ id: groupId }).del();
+  }
+
+  async deleteOptionChoice(merchantId, choiceId) {
+    const choice = await db('MENU_OPTION_CHOICES as choices')
+      .join('MENU_OPTION_GROUPS as groups', 'groups.id', 'choices.option_group_id')
+      .join('MENU_ITEMS as menus', 'menus.id', 'groups.menu_item_id')
+      .where({ 'choices.id': choiceId, 'menus.merchant_id': merchantId })
+      .first('choices.id');
+    if (!choice) return 0;
+    return db('MENU_OPTION_CHOICES').where({ id: choiceId }).del();
   }
 
   // --- 4. Delivery Fees Management ---

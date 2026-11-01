@@ -127,7 +127,8 @@ exports.createOptionGroup = async (req, res) => {
   try {
     const { menu_id } = req.params;
     const { name, is_required, allow_multiple } = req.body;
-    const group = await repo.createOptionGroup(menu_id, { name, is_required, allow_multiple });
+    const group = await repo.createOptionGroup(req.user.id, menu_id, { name, is_required, allow_multiple });
+    if (!group) return res.status(404).json({ success: false, message: 'Menu not found' });
     res.status(201).json({ success: true, data: group[0] });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -138,10 +139,31 @@ exports.createOptionChoice = async (req, res) => {
   try {
     const { group_id } = req.params;
     const { name, extra_price } = req.body;
-    const choice = await repo.createOptionChoice(group_id, { name, extra_price });
+    const choice = await repo.createOptionChoice(req.user.id, group_id, { name, extra_price });
+    if (!choice) return res.status(404).json({ success: false, message: 'Option group not found' });
     res.status(201).json({ success: true, data: choice[0] });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+exports.deleteOptionGroup = async (req, res) => {
+  try {
+    const deleted = await repo.deleteOptionGroup(req.user.id, req.params.group_id);
+    if (!deleted) return res.status(404).json({ success: false, message: 'Option group not found' });
+    return res.status(200).json({ success: true, message: 'Option group deleted' });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+exports.deleteOptionChoice = async (req, res) => {
+  try {
+    const deleted = await repo.deleteOptionChoice(req.user.id, req.params.choice_id);
+    if (!deleted) return res.status(404).json({ success: false, message: 'Option not found' });
+    return res.status(200).json({ success: true, message: 'Option deleted' });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
   }
 };
 

@@ -29,6 +29,9 @@ module.exports = (io) => {
         if (socket.user?.role === 'MERCHANT' && socket.user.id) {
             socket.join(`merchant_${socket.user.id}`);
         }
+        if (socket.user?.role === 'CUSTOMER' && socket.user.id) {
+            socket.join(`customer_${socket.user.id}`);
+        }
 
         // 2. รับคำสั่งเข้าห้องออเดอร์ พร้อมตรวจสอบสิทธิ์ (Room Authorization)
         socket.on('join_order_room', async (data) => {

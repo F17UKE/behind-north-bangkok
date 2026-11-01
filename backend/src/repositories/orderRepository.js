@@ -138,8 +138,30 @@ const listOrdersForUser = async (role, userId) => {
         ? await knex('ORDER_ITEM_CHOICES').whereIn('order_item_id', itemIds).orderBy('id', 'asc')
         : [];
 
+    const messages = await knex('MESSAGES')
+        .whereIn('order_id', orderIds)
+        .select('id', 'order_id', 'is_merchant_sender');
+    const unreadCounts = new Map(orderIds.map((orderId) => [orderId, 0]));
+    const ordersById = new Map(orders.map((order) => [order.id, order]));
+    for (const message of messages) {
+        const order = ordersById.get(message.order_id);
+        if (!order) continue;
+        const readThrough = role === 'CUSTOMER'
+            ? Number(order.customer_last_read_message_id || 0)
+            : role === 'MERCHANT' || role === 'RIDER'
+                ? Number(order.merchant_last_read_message_id || 0)
+                : Number.MAX_SAFE_INTEGER;
+        const fromOtherSide = role === 'CUSTOMER'
+            ? Boolean(message.is_merchant_sender)
+            : (role === 'MERCHANT' || role === 'RIDER') && !message.is_merchant_sender;
+        if (fromOtherSide && Number(message.id) > readThrough) {
+            unreadCounts.set(order.id, (unreadCounts.get(order.id) || 0) + 1);
+        }
+    }
+
     return orders.map((order) => ({
         ...order,
+        unread_message_count: unreadCounts.get(order.id) || 0,
         items: items.filter((item) => item.order_id === order.id).map((item) => ({
             ...item,
             choices: choices.filter((choice) => choice.order_item_id === item.id),

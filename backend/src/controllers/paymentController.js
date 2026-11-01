@@ -46,7 +46,8 @@ const generatePromptPayQR = async (req, res) => {
         res.status(200).json({
             message: 'QR Code generated',
             qr_image_base64: qrSvg,
-            amount: amount
+            amount: amount,
+            promptpay_id: promptpayId
         });
 
     } catch (error) {

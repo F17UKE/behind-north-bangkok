@@ -10,3 +10,16 @@ export const statusLabel = {
   COMPLETED: "เสร็จสิ้น",
   CANCELLED: "ยกเลิก",
 };
+
+export const statusTone = {
+  PENDING_ACCEPT: "yellow",
+  PENDING_PAYMENT: "yellow",
+  PAID: "green",
+  PREPARING: "yellow",
+  READY_FOR_DELIVERY: "yellow",
+  IN_DELIVERY: "green",
+  COMPLETED: "green",
+  REJECTED_BY_MERCHANT: "red",
+  CANCELLED_BY_CUSTOMER: "red",
+  CANCELLED: "red",
+};

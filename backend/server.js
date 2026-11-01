@@ -13,11 +13,37 @@ const server = http.createServer(app);
 app.use(helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" } // อนุญาตให้โหลดรูปภาพข้าม Origin ได้
 }));
-app.use(cors({ origin: 'http://localhost:3000' }));
+const configuredOrigins = (process.env.CORS_ORIGINS || '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+const isPrivateNetworkOrigin = (origin) => {
+    try {
+        const url = new URL(origin);
+        if (!['http:', 'https:'].includes(url.protocol)) return false;
+        const hostname = url.hostname.replace(/^\[|\]$/g, '');
+        return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' ||
+            /^10(?:\.\d{1,3}){3}$/.test(hostname) ||
+            /^192\.168(?:\.\d{1,3}){2}$/.test(hostname) ||
+            /^172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}$/.test(hostname);
+    } catch {
+        return false;
+    }
+};
+const corsOptions = {
+    origin(origin, callback) {
+        if (!origin || configuredOrigins.includes(origin) ||
+            (process.env.NODE_ENV !== 'production' && isPrivateNetworkOrigin(origin))) {
+            return callback(null, true);
+        }
+        return callback(new Error('Origin is not allowed by CORS'));
+    }
+};
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // 2. Rate Limiting Middlewares (ป้องกัน Brute Force & DDoS)
-const { authLimiter, paymentLimiter, apiLimiter } = require('./src/middlewares/rateLimiter');
+const { authLimiter, apiLimiter } = require('./src/middlewares/rateLimiter');
 app.use('/api', apiLimiter);
 
 // 3. Import Routes
@@ -43,7 +69,7 @@ app.use('/api/auth', authLimiter, authRoutes); // จำกัดความถ
 app.use('/api/users', userRoutes);
 app.use('/api/merchants', merchantRoutes);
 app.use('/api/orders', orderRoutes);
-app.use('/api/orders', paymentLimiter, paymentRoutes); // จำกัดความถี่การสร้าง QR และตรวจสลิป
+app.use('/api/orders', paymentRoutes); // Payment routes apply their own limiter only to QR/slip requests
 app.use('/api/merchants/kds', kdsRoutes);
 app.use('/api/orders', chatRoutes);
 app.use('/api/menus', menuRoutes);
@@ -66,7 +92,7 @@ app.use(errorHandler);    // จัดการ Validation Errors และ Syst
 
 // 6. ตั้งค่า Socket.io สำหรับระบบ Real-time Chat และ Notification
 const io = new Server(server, {
-    cors: { origin: 'http://localhost:3000' }
+    cors: corsOptions
 });
 
 // แชร์ instance io ให้ Controller อื่นๆ เรียกใช้งานผ่าน req.app.get('io')
@@ -128,6 +154,6 @@ cron.schedule('* * * * *', async () => {
 });
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
-    console.log(`🚀 Server is running on http://localhost:${PORT}`);
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Server is listening on port ${PORT}`);
 });

@@ -19,7 +19,7 @@ export function BottomNav({ items, active, onChange, tone = "orange" }) {
     <nav className={`bottom-nav ${tone}`}>
       {items.map((item) => (
         <button key={item.key} className={active === item.key ? "active" : ""} onClick={() => onChange(item.key)}>
-          <span>{item.icon}</span><small>{item.label}</small>
+          <span className="bottom-nav-icon">{item.icon}{item.badge > 0&&<i className="nav-unread-badge">{item.badge > 9 ? "9+" : item.badge}</i>}</span><small>{item.label}</small>
         </button>
       ))}
     </nav>
