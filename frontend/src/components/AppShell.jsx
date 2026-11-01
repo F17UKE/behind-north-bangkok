@@ -27,7 +27,7 @@ export function BottomNav({ items, active, onChange, tone = "orange" }) {
 }
 
 export function SearchBar({ value, onChange, placeholder = "Search..." }) {
-  return <label className="search-bar"><span>⌕</span><input value={value} onChange={(e) => onChange?.(e.target.value)} placeholder={placeholder} /></label>;
+  return <label className="search-bar"><span aria-hidden="true">⌕</span><input type="search" aria-label={placeholder} value={value} onChange={(e) => onChange?.(e.target.value)} placeholder={placeholder} /></label>;
 }
 
 export function StatusPill({ children, tone = "orange" }) {

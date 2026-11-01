@@ -64,6 +64,8 @@ export default function CustomerPage() {
   const [orders, setOrders] = useState([]);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [chatReturnScreen, setChatReturnScreen] = useState("delivery");
+  const [addressReturnScreen, setAddressReturnScreen] = useState("profile");
+  const [authReturnScreen, setAuthReturnScreen] = useState("home");
   const [profile, setProfile] = useState(null);
   const [authSession, setAuthSessionState] = useState(null);
   const [deliveryFee, setDeliveryFee] = useState(0);
@@ -186,11 +188,17 @@ export default function CustomerPage() {
   const total = subtotal + deliveryFee;
 
   const filtered = useMemo(() => stores.filter((food) => {
-    const menuNames = food.menu.map((item) => item.name).join(" ");
-    const matchesSearch = `${food.name} ${food.category} ${menuNames}`.toLowerCase().includes(search.toLowerCase());
+    const query = search.trim().toLocaleLowerCase();
+    const searchText = [food.name, food.category, ...food.menu.flatMap((item) => [item.name, item.description])].join(" ").toLocaleLowerCase();
+    const matchesSearch = !query || searchText.includes(query);
     const matchesCategory = category === "All" || (category === "Coffee & Tea" && /เครื่องดื่ม|กาแฟ|คาเฟ่/.test(food.category)) || (category === "On Order" && orders.some((order) => order.storeId === food.id)) || (category === "More" && !/เครื่องดื่ม|กาแฟ|คาเฟ่/.test(food.category));
     return matchesSearch && matchesCategory;
   }), [search, category, stores, orders]);
+  const filteredMenu = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase();
+    const matchingStoreIds = new Set(filtered.map((store) => store.id));
+    return menuGallery.filter((item) => matchingStoreIds.has(item.storeId) && (!query || `${item.name} ${item.description} ${item.storeName} ${item.store?.category || ""}`.toLocaleLowerCase().includes(query)));
+  }, [filtered, menuGallery, search]);
 
   useEffect(() => {
     const merchantId = activeCheckoutMerchantId;
@@ -365,8 +373,8 @@ export default function CustomerPage() {
   }
 
   async function placeOrder() {
-    if (authSession?.role !== "CUSTOMER") { setScreen("login"); return; }
-    if (!profile?.dormitory_id || !profile?.room_number) { setScreen("save-place"); return; }
+    if (authSession?.role !== "CUSTOMER") { setAuthReturnScreen("place"); setScreen("login"); return; }
+    if (!profile?.dormitory_id || !profile?.room_number) { openAddress("place"); return; }
     if (!checkoutCart.length || checkoutCart.some((item) => String(item.storeId) !== String(activeCheckoutMerchantId))) return;
     setActionError("");
     try {
@@ -412,7 +420,7 @@ export default function CustomerPage() {
     try {
       const result = await apiRequest("/users/me", { method: "PATCH", body: { dormitory_id: Number(place.dormitory_id), room_number: place.room_number, phone: place.phone } });
       setProfile(result.profile);
-      setScreen("profile");
+      setScreen(addressReturnScreen);
     } catch (error) {
       setActionError(error.message);
     }
@@ -438,7 +446,8 @@ export default function CustomerPage() {
       }
       setAuthSession({ token: result.token, role: "CUSTOMER", user: result.user });
       setAuthSessionState(getAuthSession());
-      setScreen("home");
+      setScreen(authReturnScreen);
+      setAuthReturnScreen("home");
       return "";
     } catch (error) {
       return error.message || `เข้าสู่ระบบไม่สำเร็จ${name ? ` (${name})` : ""}`;
@@ -446,7 +455,7 @@ export default function CustomerPage() {
   }
 
   const nav = (key) => {
-    if (key === "order") setScreen(authSession?.role === "CUSTOMER" ? "recent" : "login");
+    if (key === "order") { setAuthReturnScreen("recent"); setScreen(authSession?.role === "CUSTOMER" ? "recent" : "login"); }
     else if (key === "profile") setScreen("profile");
     else if (key === "cart") setScreen("basket");
     else setScreen("home");
@@ -463,22 +472,32 @@ export default function CustomerPage() {
     setScreen("chat");
   }
 
+  function openAddress(returnScreen = "home") {
+    setAddressReturnScreen(returnScreen);
+    if (authSession?.role === "CUSTOMER") {
+      setScreen("save-place");
+      return;
+    }
+    setAuthReturnScreen("save-place");
+    setScreen("login");
+  }
+
   return (
     <MobileShell>
       <div key={screen} className="mobile-page customer-page-shell screen-enter">
         {actionError && <div className="api-error" role="alert"><span>{actionError}</span><button onClick={() => setActionError("")} aria-label="ปิด">×</button></div>}
-        {screen === "home" && (storesLoading ? <EmptyState title="กำลังโหลดร้านค้า" text="กำลังดึงร้านและเมนูจากระบบ" /> : featured ? <CustomerHome search={search} setSearch={setSearch} category={category} setCategory={setCategory} foods={filtered} menu={menuGallery} heroMenuGallery={heroMenuGallery} featured={featured} heroIndex={heroIndex % heroMenuGallery.length} setHeroIndex={setHeroIndex} heroCount={heroMenuGallery.length} cartCount={cartCount} onStore={openStore} onCart={() => setScreen("basket")} onOrders={() => setScreen(authSession?.role === "CUSTOMER" ? "recent" : "login")} onProfile={() => setScreen("profile")} /> : <EmptyState title="ยังไม่มีร้านที่เปิดให้บริการ" text={loadError || "ร้านที่อนุมัติและเปิดให้บริการจะแสดงที่นี่"} />)}
+        {screen === "home" && (storesLoading ? <EmptyState title="กำลังโหลดร้านค้า" text="กำลังดึงร้านและเมนูจากระบบ" /> : featured ? <CustomerHome search={search} setSearch={setSearch} searchActive={Boolean(search.trim())} category={category} setCategory={setCategory} foods={filtered} menu={filteredMenu} heroMenuGallery={heroMenuGallery} featured={featured} heroIndex={heroIndex % heroMenuGallery.length} setHeroIndex={setHeroIndex} heroCount={heroMenuGallery.length} cartCount={cartCount} addressLabel={authSession?.role === "CUSTOMER" && profile?.dormitory_id ? `${profile.dormitory_name} · ห้อง ${profile.room_number || "—"}` : authSession?.role === "CUSTOMER" ? "เลือกที่อยู่จัดส่ง" : "เข้าสู่ระบบเพื่อเลือกที่อยู่"} onAddress={() => openAddress("home")} onStore={openStore} onCart={() => setScreen("basket")} onOrders={() => { setAuthReturnScreen("recent"); setScreen(authSession?.role === "CUSTOMER" ? "recent" : "login"); }} onProfile={() => setScreen("profile")} /> : <EmptyState title="ยังไม่มีร้านที่เปิดให้บริการ" text={loadError || "ร้านที่อนุมัติและเปิดให้บริการจะแสดงที่นี่"} />)}
         {screen === "store" && <CustomerStore store={selectedStore} cartCount={cartCount} onBack={() => setScreen("home")} onCustomize={openCustomization} onBasket={() => setScreen("basket")} />}
         {screen === "basket" && <Basket cart={cart} changeQty={changeQty} onBack={() => setScreen("home")} onNext={(merchantId) => { setCheckoutMerchantId(merchantId); setScreen("update"); }} />}
-        {screen === "update" && <UpdateBasket cart={checkoutCart} total={total} profile={profile} onEditAddress={() => setScreen(authSession?.role === "CUSTOMER" ? "save-place" : "login")} changeQty={changeQty} onBack={() => setScreen("basket")} onNext={() => { if (authSession?.role !== "CUSTOMER") setScreen("login"); else if (!profile?.dormitory_id || !profile?.room_number) setScreen("save-place"); else setScreen("place"); }} />}
+        {screen === "update" && <UpdateBasket cart={checkoutCart} total={total} profile={profile} onEditAddress={() => openAddress("update")} changeQty={changeQty} onBack={() => setScreen("basket")} onNext={() => { if (authSession?.role !== "CUSTOMER") { setAuthReturnScreen("update"); setScreen("login"); } else if (!profile?.dormitory_id || !profile?.room_number) openAddress("update"); else setScreen("place"); }} />}
         {screen === "place" && <PlaceOrder cart={checkoutCart} profile={profile} subtotal={subtotal} deliveryFee={deliveryFee} total={total} onBack={() => setScreen("update")} onPlace={placeOrder} />}
         {screen === "recent" && <Recent orders={orders} onOpen={(order) => { setSelectedOrder(order); setScreen("delivery"); }} onChat={(order) => openOrderChat(order, "recent")} onHome={() => setScreen("home")} />}
         {screen === "delivery" && <Delivery order={selectedOrder} onBack={() => setScreen("recent")} onChat={() => openOrderChat(selectedOrder, "delivery")} onPaid={async () => { const rows = apiData(await apiRequest("/orders")).map(mapOrder); setOrders(rows); setSelectedOrder(rows.find((order) => order.orderId === selectedOrder?.orderId) || rows[0] || null); }} />}
-        {screen === "profile" && <Profile key={`${profile?.id || "guest"}-${profile?.username || ""}-${profile?.phone || ""}`} profile={profile} savedPlace={savedPlace} signedIn={authSession?.role === "CUSTOMER"} onBack={() => setScreen("home")} onSave={() => setScreen(authSession?.role === "CUSTOMER" ? "save-place" : "login")} onLogin={() => setScreen("login")} onLogout={() => { clearAuthSession(); setAuthSessionState(null); setProfile(null); }} onUpdateProfile={saveProfile} />}
-        {screen === "save-place" && <SavePlace profile={profile} dormitories={dormitories} onBack={() => setScreen("profile")} onSave={savePlace} />}
+        {screen === "profile" && <Profile key={`${profile?.id || "guest"}-${profile?.username || ""}-${profile?.phone || ""}`} profile={profile} savedPlace={savedPlace} signedIn={authSession?.role === "CUSTOMER"} onBack={() => setScreen("home")} onSave={() => openAddress("profile")} onLogin={() => { setAuthReturnScreen("profile"); setScreen("login"); }} onLogout={() => { clearAuthSession(); setAuthSessionState(null); setProfile(null); }} onUpdateProfile={saveProfile} />}
+        {screen === "save-place" && <SavePlace key={`${profile?.id || "customer"}-${profile?.dormitory_id || "new"}`} profile={profile} dormitories={dormitories} onBack={() => setScreen(addressReturnScreen)} onSave={savePlace} />}
         {screen === "chat" && <CustomerChat storeName={selectedOrder?.store} messages={chatMessages} value={chatText} setValue={setChatText} onSend={sendChat} onBack={() => setScreen(chatReturnScreen)} />}
-        {screen === "login" && <CustomerAuth mode="login" onBack={() => setScreen("profile")} onSubmit={authenticate} onSignUp={() => setScreen("signup")} />}
-        {screen === "signup" && <CustomerAuth mode="signup" onBack={() => setScreen("profile")} onSubmit={authenticate} onLogin={() => setScreen("login")} />}
+        {screen === "login" && <CustomerAuth mode="login" onBack={() => { setAuthReturnScreen("home"); setScreen("profile"); }} onSubmit={authenticate} onSignUp={() => setScreen("signup")} />}
+        {screen === "signup" && <CustomerAuth mode="signup" onBack={() => { setAuthReturnScreen("home"); setScreen("profile"); }} onSubmit={authenticate} onLogin={() => setScreen("login")} />}
       </div>
       <BottomNav tone="orange" active={screen === "profile" ? "profile" : ["recent", "delivery"].includes(screen) ? "order" : ["basket", "update", "place"].includes(screen) ? "cart" : "home"} onChange={nav} items={[{ key: "home", label: "หน้าแรก", icon: "⌂" }, { key: "order", label: "ออเดอร์", icon: "▣", badge: unreadMessageTotal }, { key: "profile", label: "โปรไฟล์", icon: "♙" }, { key: "cart", label: cartCount ? `ตะกร้า (${cartCount})` : "ตะกร้า", icon: "🛒" }]} />
       {screen === "store" && <button className="floating-cart-button" onClick={() => setScreen("basket")}>🛒 {cartCount ? `${cartCount} · ${cartSubtotal} ฿` : "0 ฿"}</button>}
@@ -487,17 +506,18 @@ export default function CustomerPage() {
   );
 }
 
-function CustomerHome({ search, setSearch, category, setCategory, foods, menu, heroMenuGallery, featured, heroIndex, setHeroIndex, heroCount, cartCount, onStore, onCart, onOrders, onProfile }) {
+function CustomerHome({ search, setSearch, searchActive, category, setCategory, foods, menu, heroMenuGallery, featured, heroIndex, setHeroIndex, heroCount, cartCount, addressLabel, onAddress, onStore, onCart, onOrders, onProfile }) {
   return <div className="customer-home">
     <div className="storefront-progress" aria-hidden="true" />
     <header className="storefront-nav">
       <Link className="storefront-brand" href="/customer" aria-label="Behind North หน้าแรก"><span>BN</span><b>Behind North</b></Link>
-      <div className="storefront-address"><span className="address-pin">⌖</span><div><small>จัดส่งถึง</small><b>หอพักมหาวิทยาลัย มจพ.</b></div><span className="address-chevron">⌄</span></div>
-      <div className="storefront-search"><SearchBar value={search} onChange={setSearch} placeholder="ค้นหาร้านหรือเมนู" /></div>
+      <button type="button" className="storefront-address" onClick={onAddress} aria-label="เลือกหรือแก้ไขที่อยู่จัดส่ง"><span className="address-pin">⌖</span><div><small>จัดส่งถึง</small><b>{addressLabel}</b></div><span className="address-chevron">⌄</span></button>
+      <div className="storefront-search"><SearchBar value={search} onChange={(value) => { setSearch(value); if (value.trim()) setCategory("All"); }} placeholder="ค้นหาร้านหรือเมนู" /></div>
       <nav className="storefront-links"><button onClick={onOrders}>รายการสั่งซื้อ</button><button onClick={onProfile}>บัญชีของฉัน</button></nav>
       <button className="storefront-cart" onClick={onCart}><span>ตะกร้าของฉัน</span><b>🛒</b>{cartCount > 0 && <i>{cartCount}</i>}</button>
     </header>
 
+    {!searchActive && <>
     <section className="customer-hero" data-scroll-reveal>
       <div className="hero-copy"><span className="hero-eyebrow"><i /> อร่อยใกล้ มจพ.</span><h1>มื้อนี้<br />ให้เรา <em>จัดให้</em></h1><p>รวมร้านโปรดแถวมหาวิทยาลัย<br className="desktop-break" /> ส่งตรงถึงหอ อร่อยง่ายในไม่กี่คลิก</p><button className="hero-cta" onClick={() => onStore(featured.store)}>สั่ง {featured.name} <span>↗</span></button><div className="hero-note"><span>✦</span> ร้านเด็ด ส่งไว เริ่มต้นเพียง 40 บาท</div></div>
       <div className="hero-photo hero-stage"><div className="hero-orbit hero-orbit-one" /><div className="hero-orbit hero-orbit-two" /><div className="hero-dish-frame" key={featured.id}>{featured.image ? <img className="hero-dish" src={featured.image} alt={featured.name} /> : <span className="hero-dish-placeholder">🍽️</span>}<span className="hero-dish-glint" /></div><div className="hero-photo-label"><span>เมนูแนะนำ · {featured.storeName}</span><b>{featured.name}</b><small>{featured.description || "จากร้านที่เปิดให้บริการ"} <strong>฿{featured.price}</strong></small></div><div className="hero-slide-controls" aria-label="เลือกเมนูแนะนำ"><button onClick={() => setHeroIndex((heroIndex - 1 + heroCount) % heroCount)} aria-label="เมนูก่อนหน้า">‹</button>{heroMenuGallery.map((item, index) => <button key={item.id} className={index === heroIndex ? "active" : ""} onClick={() => setHeroIndex(index)} aria-label={`แสดงเมนู ${item.name}`} />)}<button onClick={() => setHeroIndex((heroIndex + 1) % heroCount)} aria-label="เมนูถัดไป">›</button></div></div>
@@ -508,17 +528,18 @@ function CustomerHome({ search, setSearch, category, setCategory, foods, menu, h
       <div className="section-heading"><div><span className="section-kicker">เลือกตามใจ</span><h2>วันนี้อยากกินอะไร?</h2></div><a href="#popular">สำรวจร้านทั้งหมด <span>→</span></a></div>
       <div className="customer-categories">{categories.map((c, i) => <button className={category === c ? "active" : ""} key={c} onClick={() => setCategory(c)}><span>{["✳", "☕", "↻", "＋"][i]}</span>{c === "All" ? "ทั้งหมด" : c === "Coffee & Tea" ? "กาแฟและชา" : c === "On Order" ? "สั่งบ่อย" : "เพิ่มเติม"}</button>)}</div>
     </section>
+    </>}
 
-    <section className="discovery-section popular-section" id="popular" data-scroll-reveal><div className="section-heading"><div><span className="section-kicker">คัดมาให้แล้ว</span><h2>ร้านยอดนิยมใกล้คุณ</h2></div><a href="#popular">ดูร้านทั้งหมด <span>→</span></a></div>
-      <div className="food-grid">{foods.map((food, index) => <button className={`food-card editorial-card card-tone-${index + 1}`} data-scroll-reveal key={food.id} onClick={() => onStore(food)}><div className="shop-photo">{food.photo ? <img src={food.photo} alt={`${food.name} ร้านอาหาร`} loading={index < 2 ? "eager" : "lazy"} /> : <span className="store-placeholder">🏪</span>}<span className="shop-status">เปิดอยู่</span><i>↗</i></div><div className="editorial-card-info"><small className="food-category">{food.category}</small><b>{food.name}</b><div className="food-meta"><span>{food.delivery}</span><i /><strong>เริ่ม ฿{food.price}</strong></div><div className="shop-tag-row">{food.tags.map((tag) => <small key={tag}>{tag}</small>)}</div></div></button>)}</div>
+    <section className="discovery-section popular-section" id="popular" data-scroll-reveal><div className="section-heading"><div><span className="section-kicker">{searchActive ? "ผลการค้นหา" : "คัดมาให้แล้ว"}</span><h2>{searchActive ? `ร้านที่ตรงกับ “${search.trim()}”` : "ร้านยอดนิยมใกล้คุณ"}</h2></div>{searchActive && <span className="search-result-count">{foods.length} ร้าน</span>}</div>
+      {foods.length ? <div className="food-grid">{foods.map((food, index) => <button className={`food-card editorial-card card-tone-${index + 1}`} data-scroll-reveal key={food.id} onClick={() => onStore(food)}><div className="shop-photo">{food.photo ? <img src={food.photo} alt={`${food.name} ร้านอาหาร`} loading={index < 2 ? "eager" : "lazy"} /> : <span className="store-placeholder">🏪</span>}<span className="shop-status">เปิดอยู่</span><i>↗</i></div><div className="editorial-card-info"><small className="food-category">{food.category}</small><b>{food.name}</b><div className="food-meta"><span>{food.delivery}</span><i /><strong>เริ่ม ฿{food.price}</strong></div><div className="shop-tag-row">{food.tags.map((tag) => <small key={tag}>{tag}</small>)}</div></div></button>)}</div> : <EmptyState title="ไม่พบร้านที่ค้นหา" text="ลองค้นด้วยชื่อร้าน ชื่อเมนู หรือหมวดหมู่อื่น" />}
     </section>
 
     <section className="discovery-section menu-section" id="menu" data-scroll-reveal>
-      <div className="section-heading"><div><span className="section-kicker">อร่อยทุกคำ คัดมาแล้ว</span><h2>เมนูที่น่าลอง</h2></div><span className="menu-section-note">เลื่อนลงมาเจอจานโปรดของคุณ</span></div>
-      <div className="menu-gallery-grid">{menu.map((item, index) => <article className="menu-card" data-scroll-reveal key={item.id}>
+      <div className="section-heading"><div><span className="section-kicker">{searchActive ? "ผลการค้นหา" : "อร่อยทุกคำ คัดมาแล้ว"}</span><h2>{searchActive ? "เมนูที่ตรงกับการค้นหา" : "เมนูที่น่าลอง"}</h2></div>{searchActive ? <span className="search-result-count">{menu.length} เมนู</span> : <span className="menu-section-note">เลื่อนลงมาเจอจานโปรดของคุณ</span>}</div>
+      {menu.length ? <div className="menu-gallery-grid">{menu.map((item, index) => <article className="menu-card" data-scroll-reveal key={item.id}>
         <button className="menu-photo-button" onClick={() => onStore(item.store)} aria-label={`ดูเมนูร้าน ${item.storeName}: ${item.name}`}>{item.image ? <img src={item.image} alt={item.name} loading={index < 4 ? "eager" : "lazy"} /> : <span className="menu-placeholder">🍽️</span>}<span>↗</span></button>
         <div className="menu-card-info"><div><small>{item.storeName}</small><b>{item.name}</b></div><div className="menu-card-meta"><span>★ {item.store.rating}</span><b>฿{item.price}</b></div></div>
-      </article>)}</div>
+      </article>)}</div> : searchActive && <EmptyState title="ไม่พบเมนูที่ค้นหา" text="ลองใช้ชื่อเมนูหรือชื่อร้านที่สั้นลง" />}
     </section>
 
   </div>;

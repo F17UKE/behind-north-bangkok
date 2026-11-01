@@ -85,7 +85,17 @@
   min-width: 194px;
   padding-left: clamp(12px, 2vw, 28px);
   border-left: 1px solid #eae5e0;
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
+.storefront-address:hover b { color: var(--store-orange); }
+.storefront-address:focus-visible { outline: 2px solid var(--store-orange); outline-offset: 4px; border-radius: 8px; }
 
 .address-pin { color: var(--store-orange); font-size: 22px; }
 .storefront-address div { display: grid; gap: 3px; }
