@@ -5,21 +5,100 @@ import { BottomNav, MobileShell, SearchBar, StatusPill, TopBar, EmptyState } fro
 import { merchantOrdersSeed, statusLabel } from "../../data/mockData";
 import { orderApi } from "../../api/orderApi";
 import { authApi } from "../../api/authApi";
+import { getSocket, playOrderChime } from "../../api/socketClient";
 
 export default function MerchantPage() {
   const [screen, setScreen] = useState("home");
   const [orders, setOrders] = useState(merchantOrdersSeed);
   const [orderFilter, setOrderFilter] = useState("all");
-  const [deliveryFee, setDeliveryFee] = useState("30");
+  const [deliveryFee, setDeliveryFee] = useState("10");
   const [query, setQuery] = useState("");
   const [messages, setMessages] = useState([]);
   const [selectedChat, setSelectedChat] = useState("นักศึกษา มจพ.");
   const [chatText, setChatText] = useState("");
   const [statusNotice, setStatusNotice] = useState("");
+  const [newOrderAlert, setNewOrderAlert] = useState(null);
+  const [currentMerchant, setCurrentMerchant] = useState(null);
 
-  // โหลดออเดอร์ร้านค้าจาก Backend API
+  // โหลดข้อมูลร้านค้าและออเดอร์เริ่มต้น
   useEffect(() => {
+    const merchantUser = authApi.getCurrentUser("MERCHANT");
+    setCurrentMerchant(merchantUser);
     loadMerchantOrders();
+
+    // เชื่อมต่อ Socket.io สำหรับรับออเดอร์และการแจ้งเตือน Real-time แบบไม่ต้องรีเฟรช
+    const socket = getSocket("MERCHANT");
+    if (!socket) return;
+
+    if (merchantUser?.id) {
+      socket.emit("join_merchant_room", { merchant_id: merchantUser.id });
+    }
+
+    // 1. รับออเดอร์ใหม่แบบ Real-time พร้อมเสียงกระดิ่ง และแบนเนอร์เด้งแจ้งเตือน
+    const handleNewOrder = (payload) => {
+      console.log("🔔 [Realtime] New order received:", payload);
+      playOrderChime();
+
+      const incoming = payload?.order;
+      if (incoming) {
+        const orderCode = incoming.order_code 
+          ? incoming.order_code 
+          : `#ORD${String(incoming.id).padStart(3, "0")}`;
+
+        const mapped = {
+          id: orderCode.startsWith("#") ? orderCode : `#${orderCode}`,
+          rawId: incoming.id,
+          customer: incoming.customer_name || "นักศึกษา มจพ.",
+          total: parseFloat(incoming.total_amount || 0),
+          status: incoming.status || "PENDING_ACCEPT",
+          items: Array.isArray(incoming.items) && incoming.items.length > 0 
+            ? incoming.items.map(it => typeof it === "string" ? it : `${it.name || "อาหาร"} x${it.quantity || 1}`)
+            : ["รายการอาหารสดใหม่"],
+          time: incoming.created_at 
+            ? new Date(incoming.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
+            : "เมื่อสักครู่"
+        };
+
+        // เพิ่มออเดอร์ใหม่ขึ้นด้านบนสุดของรายการทันที ไม่ต้องรีเฟรชหน้าเว็บ
+        setOrders((current) => [mapped, ...current.filter((o) => o.rawId !== incoming.id)]);
+
+        // แสดงแจ้งเตือนเด้ง Pop-up Banner ด้านบน
+        setNewOrderAlert({
+          id: mapped.id,
+          rawId: mapped.rawId,
+          customer: mapped.customer,
+          dorm: incoming.dormitory_name || incoming.delivery_room_number || "จัดส่งถึงหอพัก",
+          total: mapped.total
+        });
+
+        // ดึงข้อมูลอัปเดตแบบเต็มในเบื้องหลัง
+        loadMerchantOrders();
+      }
+    };
+
+    // 2. รับการอัปเดตสถานะออเดอร์แบบ Real-time (เช่น ลูกค้าจ่ายเงินเสร็จ / ยกเลิก)
+    const handleStatusUpdate = (payload) => {
+      console.log("⚡ [Realtime] Order status updated:", payload);
+      const { order_id, status } = payload;
+      if (!order_id || !status) return;
+
+      setOrders((current) => current.map((o) => {
+        const isMatch = o.rawId === Number(order_id) || o.id === `#ORD${String(order_id).padStart(3, "0")}`;
+        return isMatch ? { ...o, status } : o;
+      }));
+
+      setStatusNotice(`⚡ ออเดอร์ #${order_id} อัปเดตสถานะ: ${statusLabel[status] || status}`);
+      playOrderChime();
+      setTimeout(() => setStatusNotice(""), 3500);
+    };
+
+    socket.on("NEW_ORDER_RECEIVED", handleNewOrder);
+    socket.on("ORDER_STATUS_UPDATED", handleStatusUpdate);
+
+    return () => {
+      socket.off("NEW_ORDER_RECEIVED", handleNewOrder);
+      socket.off("ORDER_STATUS_UPDATED", handleStatusUpdate);
+    };
   }, []);
 
   async function loadMerchantOrders() {
@@ -28,12 +107,14 @@ export default function MerchantPage() {
       const serverOrders = await orderApi.getMerchantOrders();
       if (Array.isArray(serverOrders) && serverOrders.length > 0) {
         const mapped = serverOrders.map(o => ({
-          id: `#ORD${String(o.id).padStart(3, "0")}`,
+          id: o.order_code ? (o.order_code.startsWith("#") ? o.order_code : `#${o.order_code}`) : `#ORD${String(o.id).padStart(3, "0")}`,
           rawId: o.id,
           customer: o.customer_name || "นักศึกษา มจพ.",
           total: parseFloat(o.total_amount || 0),
           status: o.status,
-          items: Array.isArray(o.items) ? o.items.map(it => `${it.name || "อาหาร"} x${it.quantity || 1}`) : ["รายการอาหาร"],
+          items: Array.isArray(o.items) && o.items.length > 0 
+            ? o.items.map(it => typeof it === "string" ? it : `${it.name || "อาหาร"} x${it.quantity || 1}`) 
+            : ["รายการอาหาร"],
           time: o.created_at ? new Date(o.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "now"
         }));
         setOrders(mapped);
@@ -54,7 +135,7 @@ export default function MerchantPage() {
 
   async function updateOrder(id, status) {
     const target = orders.find(o => o.id === id);
-    const rawId = target?.rawId || id.replace("#ORD", "");
+    const rawId = target?.rawId || id.replace("#ORD", "").replace(/^[A-Z]+-/, "");
 
     try {
       if (status === "PREPARING") {
@@ -80,44 +161,334 @@ export default function MerchantPage() {
     setChatText(""); 
   };
 
-  return <MobileShell tone="merchant">
-    <div key={screen} className="merchant-page screen-enter">
-      {statusNotice && (
-        <div style={{ background: "#48bb78", color: "white", padding: "8px 14px", borderRadius: "8px", margin: "8px 12px", fontSize: "13px", textAlign: "center" }}>
-          {statusNotice}
-        </div>
-      )}
+  return (
+    <MobileShell tone="merchant">
+      <div key={screen} className="merchant-page screen-enter">
+        {/* ป๊อปอัปแจ้งเตือนออเดอร์ใหม่แบบ Real-time พร้อมปุ่มกดดูทันที */}
+        {newOrderAlert && (
+          <div style={{
+            background: "linear-gradient(135deg, #ff7a18 0%, #ff5200 100%)",
+            color: "white",
+            padding: "12px 16px",
+            borderRadius: "14px",
+            margin: "10px 12px",
+            boxShadow: "0 8px 24px rgba(255, 82, 0, 0.35)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            animation: "pulseAlert 0.4s ease-out",
+            border: "1.5px solid rgba(255, 255, 255, 0.4)"
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <span style={{ fontSize: "24px" }}>🔔</span>
+              <div>
+                <b style={{ fontSize: "14px", display: "block" }}>มีออเดอร์ใหม่เข้ามา! {newOrderAlert.id}</b>
+                <small style={{ fontSize: "12px", opacity: 0.95 }}>
+                  {newOrderAlert.customer} · {newOrderAlert.dorm} · <b>฿{newOrderAlert.total}</b>
+                </small>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: "6px" }}>
+              <button
+                onClick={() => {
+                  setNewOrderAlert(null);
+                  setScreen("orders");
+                  setOrderFilter("all");
+                }}
+                style={{
+                  background: "white",
+                  color: "#ff5200",
+                  border: "none",
+                  borderRadius: "8px",
+                  padding: "6px 12px",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  cursor: "pointer"
+                }}
+              >
+                ดูออเดอร์
+              </button>
+              <button
+                onClick={() => setNewOrderAlert(null)}
+                style={{
+                  background: "rgba(255,255,255,0.2)",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "8px",
+                  padding: "6px 10px",
+                  fontSize: "12px",
+                  cursor: "pointer"
+                }}
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
 
-      {screen === "home" && <MerchantHome orders={orders} go={setScreen} query={query} setQuery={setQuery} />}
-      {screen === "orders" && <MerchantOrders orders={filteredOrders} filter={orderFilter} setFilter={setOrderFilter} query={query} setQuery={setQuery} onBack={()=>setScreen("home")} updateOrder={updateOrder} />}
-      {screen === "delivery" && <MerchantDelivery orders={orders} deliveryFee={deliveryFee} setDeliveryFee={setDeliveryFee} onBack={()=>setScreen("home")} />}
-      {screen === "chat" && <MerchantChat selected={selectedChat} setSelected={setSelectedChat} messages={messages} value={chatText} setValue={setChatText} onSend={sendChat} onBack={()=>setScreen("home")} />}
-    </div>
-    <BottomNav tone="merchant" active={screen} onChange={(key)=>setScreen(key)} items={[{key:"home",label:"Home",icon:"⌂"},{key:"orders",label:"Order",icon:"▣"},{key:"delivery",label:"Delivery",icon:"🛵"},{key:"chat",label:"Chat",icon:"💬"}]} />
-  </MobileShell>;
+        {statusNotice && (
+          <div style={{ 
+            background: "#2f855a", 
+            color: "white", 
+            padding: "8px 14px", 
+            borderRadius: "8px", 
+            margin: "8px 12px", 
+            fontSize: "13px", 
+            textAlign: "center",
+            boxShadow: "0 4px 12px rgba(47, 133, 90, 0.25)"
+          }}>
+            {statusNotice}
+          </div>
+        )}
+
+        {screen === "home" && (
+          <MerchantHome 
+            orders={orders} 
+            go={setScreen} 
+            query={query} 
+            setQuery={setQuery} 
+            merchant={currentMerchant}
+          />
+        )}
+        {screen === "orders" && (
+          <MerchantOrders 
+            orders={filteredOrders} 
+            filter={orderFilter} 
+            setFilter={setOrderFilter} 
+            query={query} 
+            setQuery={setQuery} 
+            onBack={() => setScreen("home")} 
+            updateOrder={updateOrder} 
+          />
+        )}
+        {screen === "delivery" && (
+          <MerchantDelivery 
+            orders={orders} 
+            deliveryFee={deliveryFee} 
+            setDeliveryFee={setDeliveryFee} 
+            onBack={() => setScreen("home")} 
+          />
+        )}
+        {screen === "chat" && (
+          <MerchantChat 
+            selected={selectedChat} 
+            setSelected={setSelectedChat} 
+            messages={messages} 
+            value={chatText} 
+            setValue={setChatText} 
+            onSend={sendChat} 
+            onBack={() => setScreen("home")} 
+          />
+        )}
+      </div>
+      <BottomNav 
+        tone="merchant" 
+        active={screen} 
+        onChange={(key) => setScreen(key)} 
+        items={[
+          { key: "home", label: "หน้าหลัก", icon: "⌂" },
+          { key: "orders", label: `ออเดอร์ (${orders.filter(o => ["PENDING_ACCEPT", "PENDING_PAYMENT", "PAID"].includes(o.status)).length})`, icon: "▣" },
+          { key: "delivery", label: "จัดส่ง", icon: "🛵" },
+          { key: "chat", label: "แชท", icon: "💬" }
+        ]} 
+      />
+    </MobileShell>
+  );
 }
 
-function MerchantHome({ orders, go, query, setQuery }) {
-  return <>
-    <div className="merchant-profile"><div className="avatar peach">👤</div><div><b>ร้านตามสั่ง by เชฟเจนนี่</b><small>ตามสั่ง by เชฟเจนนี่ · เปิดร้าน (Backend Ready)</small></div><button>☰</button></div>
-    <SearchBar value={query} onChange={setQuery} placeholder="Search..." />
-    <div className="merchant-quick"><button>All</button><button>Unread <span>0</span></button><button>Favorites</button><button>Quick Reply</button></div>
-    <div className="merchant-stats"><div><b>24</b><small>Order Today</small><em>+XX%</em></div><div><b>1,560</b><small>Revenue Today</small><em>+XX%</em></div></div>
-    <div className="section-header"><b>Recent orders</b><button onClick={()=>go("orders")}>See all ›</button></div>
-    {orders.map((o)=><button className="merchant-recent" key={o.id} onClick={()=>go("orders")}><div className="food-thumb">🍛</div><div><b>{o.customer}</b><small>{o.id} · {statusLabel[o.status] || o.status}</small></div><strong>{o.total} ฿</strong></button>)}
-  </>;
+function MerchantHome({ orders, go, query, setQuery, merchant }) {
+  const storeTitle = merchant?.store_name || "ร้านอาหารหลัง มจพ.";
+  const locationDesc = merchant?.location || "หลังมอ ซอย 11 · เปิดรับออเดอร์ (Real-time เชื่อมต่อแล้ว)";
+
+  const todayCount = orders.length;
+  const todayRevenue = orders
+    .filter(o => ["PAID", "PREPARING", "READY_FOR_DELIVERY", "COMPLETED"].includes(o.status))
+    .reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+
+  return (
+    <>
+      <div className="merchant-profile">
+        <div className="avatar peach">🏪</div>
+        <div>
+          <b>{storeTitle}</b>
+          <small>{locationDesc}</small>
+        </div>
+        <button onClick={() => go("orders")} title="รีเฟรชออเดอร์">⚡ Real-time</button>
+      </div>
+
+      <SearchBar value={query} onChange={setQuery} placeholder="ค้นหาเลขออเดอร์ หรือชื่อลูกค้า..." />
+      
+      <div className="merchant-quick">
+        <button onClick={() => go("orders")}>ทั้งหมด ({orders.length})</button>
+        <button onClick={() => go("orders")}>รอรับ <span>{orders.filter(o => ["PENDING_ACCEPT", "PAID"].includes(o.status)).length}</span></button>
+        <button onClick={() => go("orders")}>กำลังทำ <span>{orders.filter(o => o.status === "PREPARING").length}</span></button>
+      </div>
+
+      <div className="merchant-stats">
+        <div>
+          <b>{todayCount}</b>
+          <small>Order ทั้งหมด</small>
+          <em>Real-time</em>
+        </div>
+        <div>
+          <b>฿{todayRevenue.toLocaleString()}</b>
+          <small>ยอดขายวันนี้</small>
+          <em>+100%</em>
+        </div>
+      </div>
+
+      <div className="section-header">
+        <b>ออเดอร์ล่าสุด (อัปเดตอัตโนมัติ)</b>
+        <button onClick={() => go("orders")}>ดูทั้งหมด ({orders.length}) ›</button>
+      </div>
+
+      {orders.slice(0, 5).map((o) => (
+        <button className="merchant-recent" key={o.id} onClick={() => go("orders")}>
+          <div className="food-thumb">🍛</div>
+          <div>
+            <b>{o.customer}</b>
+            <small>{o.id} · {statusLabel[o.status] || o.status}</small>
+          </div>
+          <strong>฿{o.total}</strong>
+        </button>
+      ))}
+    </>
+  );
 }
 
 function MerchantOrders({ orders, filter, setFilter, query, setQuery, onBack, updateOrder }) {
-  return <><TopBar title="การสั่ง" subtitle="Order section" onBack={onBack} /><SearchBar value={query} onChange={setQuery} placeholder="Search order..." /><div className="filter-scroll merchant-filters"><button className={filter==="all"?"active":""} onClick={()=>setFilter("all")}>การสั่งซื้อทั้งหมด</button><button className={filter==="pending"?"active":""} onClick={()=>setFilter("pending")}>กำลังรอรับ</button><button className={filter==="preparing"?"active":""} onClick={()=>setFilter("preparing")}>กำลังทำ</button><button className={filter==="done"?"active":""} onClick={()=>setFilter("done")}>เสร็จแล้ว</button></div>{orders.length ? orders.map((o)=><div className="merchant-order-card" key={o.id}><div className="order-head"><div><b>{o.customer}</b><small>Order ID: {o.id} · {o.time}</small></div><strong>{o.total} ฿</strong></div><div className="order-items">{o.items?.map((x)=><span key={x}>• {x}</span>)}</div><div className="order-footer"><StatusPill tone={["PENDING_ACCEPT", "PENDING_PAYMENT", "PAID"].includes(o.status) ? "orange" : o.status === "PREPARING" ? "yellow" : "green"}>{statusLabel[o.status] || o.status}</StatusPill><div>{["PENDING_ACCEPT", "PAID"].includes(o.status) && <button className="accept-button" onClick={()=>updateOrder(o.id,"PREPARING")}>รับออเดอร์</button>}{o.status === "PREPARING" && <button className="accept-button" onClick={()=>updateOrder(o.id,"READY_FOR_DELIVERY")}>พร้อมจัดส่ง</button>}</div></div></div>) : <EmptyState title="No orders" text="ไม่มีออเดอร์ตามตัวกรอง" />}</>;
+  return (
+    <>
+      <TopBar title="จัดการออเดอร์" subtitle="Real-time Order Management" onBack={onBack} />
+      <SearchBar value={query} onChange={setQuery} placeholder="ค้นหาเลขออเดอร์ หรือลูกค้า..." />
+      <div className="filter-scroll merchant-filters">
+        <button className={filter === "all" ? "active" : ""} onClick={() => setFilter("all")}>
+          ทั้งหมด ({orders.length})
+        </button>
+        <button className={filter === "pending" ? "active" : ""} onClick={() => setFilter("pending")}>
+          รอรับ/รอชำระ
+        </button>
+        <button className={filter === "preparing" ? "active" : ""} onClick={() => setFilter("preparing")}>
+          กำลังทำ
+        </button>
+        <button className={filter === "done" ? "active" : ""} onClick={() => setFilter("done")}>
+          เสร็จแล้ว/พร้อมส่ง
+        </button>
+      </div>
+
+      {orders.length ? (
+        orders.map((o) => (
+          <div className="merchant-order-card" key={o.id}>
+            <div className="order-head">
+              <div>
+                <b>{o.customer}</b>
+                <small>Order ID: {o.id} · {o.time}</small>
+              </div>
+              <strong>฿{o.total}</strong>
+            </div>
+            <div className="order-items">
+              {o.items?.map((x, i) => (
+                <span key={i}>• {x}</span>
+              ))}
+            </div>
+            <div className="order-footer">
+              <StatusPill tone={["PENDING_ACCEPT", "PENDING_PAYMENT", "PAID"].includes(o.status) ? "orange" : o.status === "PREPARING" ? "yellow" : "green"}>
+                {statusLabel[o.status] || o.status}
+              </StatusPill>
+              <div>
+                {["PENDING_ACCEPT", "PAID"].includes(o.status) && (
+                  <button className="accept-button" onClick={() => updateOrder(o.id, "PREPARING")}>
+                    รับออเดอร์ & เริ่มทำ
+                  </button>
+                )}
+                {o.status === "PREPARING" && (
+                  <button className="accept-button" onClick={() => updateOrder(o.id, "READY_FOR_DELIVERY")}>
+                    พร้อมจัดส่ง 🛵
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        ))
+      ) : (
+        <EmptyState title="ไม่มีรายการออเดอร์" text="ยังไม่มีออเดอร์ตามตัวกรองที่เลือกในขณะนี้" />
+      )}
+    </>
+  );
 }
 
 function MerchantDelivery({ orders, deliveryFee, setDeliveryFee, onBack }) {
-  const ready = orders.filter((o)=>["READY_FOR_DELIVERY","IN_DELIVERY","COMPLETED"].includes(o.status));
-  return <><TopBar title="Delivery" subtitle="Delivery section" onBack={onBack} /><div className="delivery-fee-box"><h3>Delivery fees</h3><input value={deliveryFee} onChange={(e)=>setDeliveryFee(e.target.value.replace(/\D/g,""))} /><div className="range-track"><i /></div><button className="primary-btn">Submit</button></div><div className="section-header"><b>Delivery orders</b><span>{ready.length}</span></div>{ready.map((o)=><div className="merchant-order-card compact" key={o.id}><div className="order-head"><div><b>{o.id}</b><small>{o.customer}</small></div><StatusPill tone="green">{statusLabel[o.status] || o.status}</StatusPill></div><strong>{o.total} ฿</strong></div>)}</>;
+  const ready = orders.filter((o) => ["READY_FOR_DELIVERY", "IN_DELIVERY", "COMPLETED"].includes(o.status));
+  return (
+    <>
+      <TopBar title="การจัดส่ง" subtitle="Delivery Management" onBack={onBack} />
+      <div className="delivery-fee-box">
+        <h3>กำหนดค่าจัดส่งเริ่มต้น (บาท)</h3>
+        <input 
+          value={deliveryFee} 
+          onChange={(e) => setDeliveryFee(e.target.value.replace(/\D/g, ""))} 
+        />
+        <div className="range-track"><i /></div>
+        <button className="primary-btn">บันทึกค่าจัดส่ง</button>
+      </div>
+      <div className="section-header">
+        <b>ออเดอร์ที่พร้อมจัดส่ง/กำลังส่ง</b>
+        <span>{ready.length} รายการ</span>
+      </div>
+      {ready.map((o) => (
+        <div className="merchant-order-card compact" key={o.id}>
+          <div className="order-head">
+            <div>
+              <b>{o.id}</b>
+              <small>{o.customer}</small>
+            </div>
+            <StatusPill tone="green">{statusLabel[o.status] || o.status}</StatusPill>
+          </div>
+          <strong>฿{o.total}</strong>
+        </div>
+      ))}
+    </>
+  );
 }
 
 function MerchantChat({ selected, setSelected, messages, value, setValue, onSend, onBack }) {
-  const contacts=["นักศึกษา มจพ.","Petchtae","Thanakrit","Napat","บ้านหลังมอ","Chonlatit"];
-  return <><TopBar title="Chat" subtitle="Chat section" onBack={onBack} /><div className="merchant-chat-layout"><div className="contact-list">{contacts.map((c)=><button className={selected===c?"selected":""} key={c} onClick={()=>setSelected(c)}><div className="avatar small">👤</div><div><b>{c}</b><small>{c===selected?"ข้อความล่าสุด...":"Order message..."}</small></div><span>1:52 PM</span></button>)}</div><div className="chat-panel"><div className="chat-panel-top"><div className="avatar small">👤</div><div><b>{selected}</b><small>online</small></div></div><div className="chat-messages short">{messages.filter((m)=>m.user===selected).map((m,i)=><div className="chat-bubble me" key={i}>{m.text}</div>)}<div className="chat-bubble store">สวัสดีครับ ต้องการสอบถามอะไรไหมครับ?</div></div><form className="chat-compose" onSubmit={onSend}><input value={value} onChange={(e)=>setValue(e.target.value)} placeholder="เขียนข้อความ..."/><button>➤</button></form></div></div></>;
+  const contacts = ["นักศึกษา มจพ.", "Petchtae", "Thanakrit", "Napat", "บ้านหลังมอ", "Chonlatit"];
+  return (
+    <>
+      <TopBar title="แชทติดต่อลูกค้า" subtitle="Direct Customer Chat" onBack={onBack} />
+      <div className="merchant-chat-layout">
+        <div className="contact-list">
+          {contacts.map((c) => (
+            <button className={selected === c ? "selected" : ""} key={c} onClick={() => setSelected(c)}>
+              <div className="avatar small">👤</div>
+              <div>
+                <b>{c}</b>
+                <small>{c === selected ? "ข้อความล่าสุด..." : "Order message..."}</small>
+              </div>
+              <span>เมื่อสักครู่</span>
+            </button>
+          ))}
+        </div>
+        <div className="chat-panel">
+          <div className="chat-panel-top">
+            <div className="avatar small">👤</div>
+            <div>
+              <b>{selected}</b>
+              <small>online (เชื่อมต่อพร้อมแชท)</small>
+            </div>
+          </div>
+          <div className="chat-messages short">
+            {messages.filter((m) => m.user === selected).map((m, i) => (
+              <div className="chat-bubble me" key={i}>{m.text}</div>
+            ))}
+            <div className="chat-bubble store">สวัสดีครับ ร้านได้รับออเดอร์เรียบร้อยแล้ว กำลังจัดเตรียมให้นะครับ</div>
+          </div>
+          <form className="chat-compose" onSubmit={onSend}>
+            <input value={value} onChange={(e) => setValue(e.target.value)} placeholder="พิมพ์ข้อความตอบกลับ..." />
+            <button type="submit">➤</button>
+          </form>
+        </div>
+      </div>
+    </>
+  );
 }

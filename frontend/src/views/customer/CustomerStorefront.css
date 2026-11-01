@@ -1495,3 +1495,56 @@
 .address-warning-notice .auth-checkout-notice-btn {
   background: #d97706;
 }
+
+/* Menu Category Filter Chips in Storefront */
+.menu-category-scroll {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 6px 2px 14px;
+  margin-bottom: 14px;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.menu-category-scroll::-webkit-scrollbar {
+  display: none;
+}
+.menu-cat-chip {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1.5px solid #eae5df;
+  background: #ffffff;
+  color: #5d534b;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+.menu-cat-chip:hover {
+  border-color: #ff9858;
+  color: #ea580c;
+  background: #fff7ed;
+}
+.menu-cat-chip.active {
+  background: linear-gradient(135deg, #ff7426 0%, #ea580c 100%);
+  color: #ffffff;
+  border-color: #ea580c;
+  box-shadow: 0 4px 14px rgba(234, 88, 12, 0.25);
+}
+.menu-cat-chip .chip-count {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 700;
+  background: rgba(0, 0, 0, 0.06);
+}
+.menu-cat-chip.active .chip-count {
+  background: rgba(255, 255, 255, 0.3);
+  color: #ffffff;
+}

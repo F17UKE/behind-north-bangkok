@@ -109,12 +109,19 @@ const uploadAndVerifySlip = async (req, res) => {
             // 5. ส่งสัญญาณ Socket.io แจ้งเตือนร้านค้าและลูกค้าว่าชำระเงินเรียบร้อยแล้ว
             const io = req.app.get('io');
             if (io) {
-                io.to(`order_${order_id}`).emit('ORDER_STATUS_UPDATED', {
+                const payload = {
                     order_id: Number(order_id),
                     status: 'PAID',
                     updated_by: 'CUSTOMER',
                     updated_at: new Date()
-                });
+                };
+                io.to(`order_${order_id}`).emit('ORDER_STATUS_UPDATED', payload);
+                if (orderInfo.merchant_id) {
+                    io.to(`merchant_${orderInfo.merchant_id}`).emit('ORDER_STATUS_UPDATED', payload);
+                }
+                if (orderInfo.customer_id) {
+                    io.to(`customer_${orderInfo.customer_id}`).emit('ORDER_STATUS_UPDATED', payload);
+                }
             }
             
             return res.status(200).json({ 

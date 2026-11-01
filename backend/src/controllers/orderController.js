@@ -1,5 +1,6 @@
 // backend/src/controllers/orderController.js
 const orderRepo = require('../repositories/orderRepository');
+const knex = require('../db');
 const { ORDER_STATES, canTransition } = require('../utils/stateMachine');
 
 const createOrder = async (req, res) => {
@@ -13,11 +14,38 @@ const createOrder = async (req, res) => {
 
     const newOrder = await orderRepo.createOrder(orderData);
 
-    // ส่งสัญญาณแจ้งเตือนไปยังห้องร้านค้าทันทีเมื่อมีออเดอร์ใหม่เข้ามา
+    // ดึงข้อมูลเสริมสำหรับส่งผ่าน Socket.io ให้ร้านค้าและลูกค้า
     const io = req.app.get('io');
     if (io) {
+      let customerName = 'นักศึกษา มจพ.';
+      let dormName = '';
+      try {
+        const cust = await knex('CUSTOMERS').where('id', newOrder.customer_id).first();
+        if (cust) customerName = cust.name;
+        const dorm = await knex('DORMITORIES').where('id', newOrder.delivery_dormitory_id).first();
+        if (dorm) dormName = dorm.name;
+      } catch (e) {
+        console.warn('Could not fetch customer/dorm info for socket broadcast:', e);
+      }
+
+      const enrichedOrder = {
+        ...newOrder,
+        customer_name: customerName,
+        dormitory_name: dormName,
+        total_amount: parseFloat(newOrder.total_amount || 0)
+      };
+
+      // ส่งสัญญาณแจ้งเตือนไปยังร้านค้าและ KDS
       io.to(`merchant_${newOrder.merchant_id}`).emit('NEW_ORDER_RECEIVED', {
-        order: newOrder
+        order: enrichedOrder
+      });
+      io.to(`merchant_${newOrder.merchant_id}_kds`).emit('NEW_ORDER_RECEIVED', {
+        order: enrichedOrder
+      });
+      io.to(`customer_${newOrder.customer_id}`).emit('ORDER_STATUS_UPDATED', {
+        order_id: Number(newOrder.id),
+        status: newOrder.status,
+        order: enrichedOrder
       });
     }
 
@@ -150,13 +178,20 @@ const changeOrderStatus = async (req, res) => {
     // 7. ส่งสัญญาณแจ้งเตือน Real-time ผ่าน Socket.io
     const io = req.app.get('io');
     if (io) {
-      io.to(`order_${order_id}`).emit('ORDER_STATUS_UPDATED', {
+      const payload = {
         order_id: Number(order_id),
         status: nextState,
         rider_id: effectiveRiderId,
         updated_by: userRole,
         updated_at: new Date()
-      });
+      };
+      io.to(`order_${order_id}`).emit('ORDER_STATUS_UPDATED', payload);
+      if (orderMerchantId) {
+        io.to(`merchant_${orderMerchantId}`).emit('ORDER_STATUS_UPDATED', payload);
+      }
+      if (orderCustomerId) {
+        io.to(`customer_${orderCustomerId}`).emit('ORDER_STATUS_UPDATED', payload);
+      }
 
       // หากมีการมอบหมาย Rider ให้แจ้งเตือนไปยัง Rider ห้องส่วนตัวด้วย
       if (nextState === ORDER_STATES.READY_FOR_DELIVERY && effectiveRiderId) {

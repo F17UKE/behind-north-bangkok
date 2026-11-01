@@ -31,7 +31,7 @@ export const authApi = {
     if (res?.token) {
       setToken(res.token, "MERCHANT");
       if (typeof window !== "undefined") {
-        localStorage.setItem("merchant_user", JSON.stringify(res.user || {}));
+        localStorage.setItem("merchant_user", JSON.stringify(res.merchant || res.user || {}));
       }
     }
     return res;

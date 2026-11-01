@@ -23,6 +23,44 @@ module.exports = (io) => {
     });
 
     io.on('connection', (socket) => {
+        // เข้าร่วมห้องส่วนตัวตาม Role อัตโนมัติเมื่อตรวจสอบ Token สำเร็จ
+        if (socket.user) {
+            const { id: userId, role } = socket.user;
+            if (role === 'MERCHANT') {
+                socket.join(`merchant_${userId}`);
+                socket.join(`merchant_${userId}_kds`);
+                console.log(`🏪 Merchant ${userId} เข้าร่วมห้อง: merchant_${userId}`);
+            } else if (role === 'CUSTOMER') {
+                socket.join(`customer_${userId}`);
+                console.log(`👤 Customer ${userId} เข้าร่วมห้อง: customer_${userId}`);
+            } else if (role === 'RIDER') {
+                socket.join(`rider_${userId}`);
+                console.log(`🛵 Rider ${userId} เข้าร่วมห้อง: rider_${userId}`);
+            }
+        }
+
+        // รับคำสั่งเข้าห้องส่วนตัวของร้านค้าโดยตรง
+        socket.on('join_merchant_room', (data) => {
+            const merchantId = socket.user?.id || (typeof data === 'object' ? (data?.merchantId || data?.merchant_id) : data);
+            if (merchantId) {
+                const room = `merchant_${merchantId}`;
+                socket.join(room);
+                socket.join(`merchant_${merchantId}_kds`);
+                console.log(`🏪 Socket ${socket.id} เข้าสู่ห้องร้านค้า: ${room}`);
+                socket.emit('merchant_room_joined', { room, merchant_id: merchantId });
+            }
+        });
+
+        // รับคำสั่งเข้าห้องส่วนตัวของลูกค้าโดยตรง
+        socket.on('join_customer_room', (data) => {
+            const customerId = socket.user?.id || (typeof data === 'object' ? (data?.customerId || data?.customer_id) : data);
+            if (customerId) {
+                const room = `customer_${customerId}`;
+                socket.join(room);
+                console.log(`👤 Socket ${socket.id} เข้าสู่ห้องลูกค้า: ${room}`);
+                socket.emit('customer_room_joined', { room, customer_id: customerId });
+            }
+        });
         console.log(`✅ Socket connected: ${socket.id} (User: ${socket.user ? socket.user.role + '_' + socket.user.id : 'Anonymous'})`);
 
         // 2. รับคำสั่งเข้าห้องออเดอร์ พร้อมตรวจสอบสิทธิ์ (Room Authorization)

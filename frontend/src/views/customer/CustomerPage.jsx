@@ -7,9 +7,10 @@ import { customerFoods, initialOrders, statusLabel, dormitories, sois } from "..
 import { authApi } from "../../api/authApi";
 import { merchantApi } from "../../api/merchantApi";
 import { orderApi } from "../../api/orderApi";
+import { getSocket, playOrderChime } from "../../api/socketClient";
 import "./CustomerStorefront.css";
 
-const categories = ["All", "อาหารตามสั่ง", "หมูกระทะ", "ก๋วยเตี๋ยว", "อาหารจานเดียว"];
+const categories = ["All", "อาหารตามสั่ง", "หมูกระทะ", "ก๋วยเตี๋ยว", "อาหารจานเดียว", "แกงใต้"];
 const defaultMenuGallery = customerFoods.flatMap((store) => store.menu.map((item) => ({ ...item, storeName: store.name, store })));
 const heroMenuGallery = defaultMenuGallery.slice(0, 10);
 const customizationOptions = {
@@ -23,6 +24,41 @@ const customizationOptions = {
   brunch: [{ id: "egg", name: "เพิ่มไข่ดาว", price: 12 }, { id: "bacon", name: "เพิ่มเบคอน", price: 25 }, { id: "cheese", name: "เพิ่มชีส", price: 15 }, { id: "coffee", name: "เพิ่มกาแฟ 1 ช็อต", price: 15 }, { id: "fruit", name: "เพิ่มผลไม้", price: 20 }],
   hotpot: [{ id: "pork", name: "เพิ่มหมูสไลซ์", price: 35 }, { id: "beef", name: "เพิ่มเนื้อสไลซ์", price: 45 }, { id: "vegetable", name: "เพิ่มผักรวม", price: 25 }, { id: "egg", name: "เพิ่มไข่ไก่", price: 10 }, { id: "noodles", name: "เพิ่มวุ้นเส้น", price: 10 }],
 };
+
+
+export function getMenuCategory(item, storeCategory = "") {
+  const name = item?.name || "";
+  const desc = item?.description || "";
+  const text = `${name} ${desc}`.toLowerCase();
+
+  // 1. หมูกระทะ / ปิ้งย่าง
+  if (text.includes("หมูกระทะ") || text.includes("ปิ้ง") || text.includes("ย่าง") || text.includes("ไซส์ m") || text.includes("ไซส์ l") || text.includes("ไซส์ xl") || text.includes("ถ้วยไซส์")) {
+    return "หมูกระทะ / ปิ้งย่าง";
+  }
+
+  // 2. เมนูเส้น / ก๋วยเตี๋ยว
+  if (text.includes("ก๋วยเตี๋ยว") || text.includes("เส้น") || text.includes("หมี่") || text.includes("บะหมี่") || text.includes("โฟ") || text.includes("เย็นตาโฟ") || text.includes("จั๊บ") || text.includes("มาม่า") || text.includes("สปาเก็ตตี้") || text.includes("ราดหน้า") || text.includes("สุกี้") || text.includes("ขนมจีน") || text.includes("วุ้นเส้น")) {
+    return "เมนูเส้น / ก๋วยเตี๋ยว";
+  }
+
+  // 3. ต้ม / แกง / ต้มยำ
+  if (text.includes("ต้มยำ") || text.includes("แกง") || text.includes("พะแนง") || text.includes("ฉู่ฉี่") || text.includes("ซุป") || (text.includes("ต้ม") && !text.includes("ไก่ต้ม"))) {
+    return "ต้ม / แกง / ต้มยำ";
+  }
+
+  // 4. ของทานเล่น / กับข้าว
+  if (text.includes("เฟรนฟราย") || text.includes("ไก่ป๊อบ") || text.includes("น้ำพริก") || text.includes("กากหมู") || text.includes("ไข่ดาว") || text.includes("ไข่เจียว") || text.includes("กุนเชียง") || text.includes("ไข่เยี่ยวม้า") || text.includes("ไก่กรอบยกเซต") || text.includes("ทันมูจิ") || text.includes("ขิงดอง") || text.includes("ออมเล็ต") || text.includes("ไข่กระทะ")) {
+    return "ของทานเล่น / กับข้าว";
+  }
+
+  // 5. เครื่องดื่ม / ของหวาน
+  if (text.includes("น้ำ") && (text.includes("ปั่น") || text.includes("หวาน") || text.includes("ชา") || text.includes("กาแฟ") || text.includes("บ๊วย") || text.includes("มะนาว") || text.includes("โซดา") || text.includes("เก๊กฮวย") || text.includes("นม") || text.includes("ขนม") || text.includes("เฉาก๊วย") || text.includes("ไอศกรีม"))) {
+    return "เครื่องดื่ม / ของหวาน";
+  }
+
+  // 6. เมนูข้าว / อาหารจานเดียว (Default)
+  return "อาหารจานเดียว / เมนูข้าว";
+}
 
 export default function CustomerPage() {
   const [screen, setScreen] = useState("home");
@@ -340,6 +376,11 @@ export default function CustomerPage() {
     setSelectedOrder(newOrder);
     setCart([]);
     setScreen("delivery");
+
+    const socket = getSocket("CUSTOMER");
+    if (socket && newOrder.rawId) {
+      socket.emit("join_order_room", { orderId: newOrder.rawId });
+    }
   }
 
   // ยืนยันการชำระเงินและตรวจสอบสลิปผ่าน API
@@ -642,7 +683,7 @@ function CustomerHome({ search, setSearch, category, setCategory, foods, menu, f
 
     <section className="discovery-section" data-scroll-reveal>
       <div className="section-heading"><div><span className="section-kicker">เลือกตามใจ</span><h2>วันนี้อยากกินอะไร?</h2></div><a href="#popular">สำรวจร้านทั้งหมด <span>→</span></a></div>
-      <div className="customer-categories">{categories.map((c, i) => <button className={category === c ? "active" : ""} key={c} onClick={() => setCategory(c)}><span>{["✳", "🍳", "🥓", "🍜", "🍱"][i] || "🍽️"}</span>{c === "All" ? "ทั้งหมด" : c}</button>)}</div>
+      <div className="customer-categories">{categories.map((c, i) => <button className={category === c ? "active" : ""} key={c} onClick={() => setCategory(c)}><span>{["✳", "🍳", "🥓", "🍜", "🍱", "🌶️"][i] || "🍽️"}</span>{c === "All" ? "ทั้งหมด" : c}</button>)}</div>
     </section>
 
     <section className="discovery-section popular-section" id="popular" data-scroll-reveal><div className="section-heading"><div><span className="section-kicker">คัดมาให้แล้ว</span><h2>ร้านยอดนิยมใกล้คุณ</h2></div><a href="#popular">ดูร้านทั้งหมด <span>→</span></a></div>
@@ -739,20 +780,108 @@ function StoreHeroVisual({ store }) {
 }
 
 function CustomerStore({ store, onBack, onCustomize, onBasket, cartCount }) {
-  return <div className="restaurant-detail">
-    <TopBar title={store.name} subtitle={store.category} onBack={onBack} action={<button className="topbar-cart" onClick={onBasket}>🛒 {cartCount}</button>} />
-    <div className="store-hero">
-      <StoreHeroVisual store={store} />
-      <div className="store-info">
-        <div><b>{store.name}</b><small>{store.category}</small></div>
-        <div className="store-meta-line"><span>★ {store.rating}</span><i /><span>{store.delivery}</span><i /><span>{store.fee}</span></div>
-        <div className="store-detail-tags">{store.tags?.map((tag) => <span key={tag}>{tag}</span>)}</div>
+  const [selectedCat, setSelectedCat] = useState("ทั้งหมด");
+  const menuList = store.menu || [];
+
+  // แยกหมวดหมู่ของเมนูที่มีอยู่ในร้านนี้จริง
+  const availableCategories = useMemo(() => {
+    if (!menuList.length) return ["ทั้งหมด"];
+    const cats = new Set();
+    menuList.forEach((it) => {
+      cats.add(getMenuCategory(it, store.category));
+    });
+    return ["ทั้งหมด", ...Array.from(cats)];
+  }, [menuList, store.category]);
+
+  // กรองเมนูตามหมวดหมู่ที่เลือก
+  const displayedMenu = useMemo(() => {
+    if (selectedCat === "ทั้งหมด") return menuList;
+    return menuList.filter((it) => getMenuCategory(it, store.category) === selectedCat);
+  }, [menuList, selectedCat, store.category]);
+
+  return (
+    <div className="restaurant-detail">
+      <TopBar
+        title={store.name}
+        subtitle={store.category}
+        onBack={onBack}
+        action={<button className="topbar-cart" onClick={onBasket}>🛒 {cartCount}</button>}
+      />
+      <div className="store-hero">
+        <StoreHeroVisual store={store} />
+        <div className="store-info">
+          <div><b>{store.name}</b><small>{store.category}</small></div>
+          <div className="store-meta-line">
+            <span>★ {store.rating}</span><i />
+            <span>{store.delivery}</span><i />
+            <span>{store.fee}</span>
+          </div>
+          <div className="store-detail-tags">
+            {store.tags?.map((tag) => <span key={tag}>{tag}</span>)}
+          </div>
+        </div>
       </div>
+
+      <div className="restaurant-menu-heading">
+        <div>
+          <small>ทำสดใหม่ทุกจาน</small>
+          <b>เมนูของร้าน</b>
+        </div>
+        <span>{displayedMenu.length} จาก {menuList.length} เมนู</span>
+      </div>
+
+      {/* แถบเลือกหมวดหมู่เมนูอาหาร (Chips Filter) */}
+      {availableCategories.length > 1 && (
+        <div className="menu-category-scroll">
+          {availableCategories.map((cat) => {
+            const count = cat === "ทั้งหมด"
+              ? menuList.length
+              : menuList.filter((it) => getMenuCategory(it, store.category) === cat).length;
+            return (
+              <button
+                key={cat}
+                className={`menu-cat-chip ${selectedCat === cat ? "active" : ""}`}
+                onClick={() => setSelectedCat(cat)}
+              >
+                {cat} <span className="chip-count">{count}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {displayedMenu.length > 0 ? (
+        <div className="store-menu-grid">
+          {displayedMenu.map((item) => (
+            <article className="store-menu-item" key={item.id}>
+              <div className="store-menu-photo">
+                <img src={item.image} alt={item.name} loading="lazy" />
+              </div>
+              <div className="store-menu-item-info">
+                <div>
+                  <b>{item.name}</b>
+                  <small>{item.description}</small>
+                </div>
+                <div className="store-menu-item-bottom">
+                  <strong>฿{item.price}</strong>
+                  <button onClick={() => onCustomize(item, store)} aria-label={`ปรับแต่ง ${item.name}`}>＋</button>
+                </div>
+                <small className="customize-hint">ปรับแต่งเมนูได้</small>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div style={{ textAlign: "center", padding: "40px 16px", color: "#8a8178" }}>
+          <p>ไม่มีเมนูในหมวดหมู่นี้</p>
+        </div>
+      )}
+
+      <button className="primary-btn store-cart-cta" onClick={onBasket}>
+        ดูตะกร้า <span>{cartCount} รายการ</span>
+      </button>
     </div>
-    <div className="restaurant-menu-heading"><div><small>ทำสดทุกจาน</small><b>เมนูของร้าน</b></div><span>{store.menu?.length || 0} เมนู</span></div>
-    <div className="store-menu-grid">{store.menu?.map((item) => <article className="store-menu-item" key={item.id}><div className="store-menu-photo"><img src={item.image} alt={item.name} loading="lazy" /></div><div className="store-menu-item-info"><div><b>{item.name}</b><small>{item.description}</small></div><div className="store-menu-item-bottom"><strong>฿{item.price}</strong><button onClick={() => onCustomize(item, store)} aria-label={`ปรับแต่ง ${item.name}`}>＋</button></div><small className="customize-hint">ปรับแต่งเมนูได้</small></div></article>)}</div>
-    <button className="primary-btn store-cart-cta" onClick={onBasket}>ดูตะกร้า <span>{cartCount} รายการ</span></button>
-  </div>;
+  );
 }
 
 function CustomizationModal({ item, options, selected, setSelected, note, setNote, qty, setQty, onClose, onConfirm }) {
