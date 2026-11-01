@@ -6,3 +6,5 @@ backend/imported-merchant-credentials.csv
 # next.js
 /.next/
 /out/
+.postgres-installer-tmp/
+postgresql-runtime/
