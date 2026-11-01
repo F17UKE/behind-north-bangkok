@@ -207,7 +207,7 @@ export default function CustomerPage() {
                   name: m.name,
                   price: parseFloat(m.price || 0),
                   description: m.description || "",
-                  image: m.image_url || "/menu-boat-noodles.webp",
+                  image: m.image_url || null,
                   photo: m.image_url || null,
                   emoji: "🍛",
                   storeId: store.id,
@@ -248,15 +248,19 @@ export default function CustomerPage() {
     try {
       const serverOrders = await orderApi.getCustomerOrders();
       if (Array.isArray(serverOrders) && serverOrders.length > 0) {
-        const formatted = serverOrders.map(o => ({
-          id: `#ORD${String(o.id).padStart(3, "0")}`,
-          rawId: o.id,
-          store: o.store_name || "ร้านอาหารหลังมอ",
-          items: Array.isArray(o.items) ? o.items.map(it => `${it.name || "อาหาร"} x${it.quantity || 1}`) : ["รายการอาหาร"],
-          total: parseFloat(o.total_amount || 0),
-          status: o.status || "PREPARING",
-          date: o.created_at ? new Date(o.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Today, now"
-        }));
+        const formatted = serverOrders.map(o => {
+          const code = o.order_code ? (o.order_code.startsWith("#") ? o.order_code : `#${o.order_code}`) : `#ORD${String(o.id).padStart(3, "0")}`;
+          return {
+            id: code,
+            order_code: code,
+            rawId: o.id,
+            store: o.store_name || "ร้านอาหารหลังมอ",
+            items: Array.isArray(o.items) ? o.items.map(it => `${it.name || "อาหาร"} x${it.quantity || 1}`) : ["รายการอาหาร"],
+            total: parseFloat(o.total_amount || 0),
+            status: o.status || "PREPARING",
+            date: o.created_at ? new Date(o.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Today, now"
+          };
+        });
         setOrders(formatted);
       }
     } catch (err) {
@@ -389,7 +393,7 @@ export default function CustomerPage() {
           name: m.name,
           price: parseFloat(m.price) || 50,
           emoji: "🍛",
-          image: m.image_url || "/menu-krapao.webp",
+          image: m.image_url || null,
           description: m.description || `${m.name} ปรุงสดใหม่`,
           customizationType: "rice"
         }));
@@ -453,13 +457,16 @@ export default function CustomerPage() {
         };
 
         const serverRes = await orderApi.createOrder(orderPayload);
-        const orderId = serverRes.id || serverRes.data?.id;
+        const respData = serverRes?.data || serverRes;
+        const orderId = respData?.id;
 
         if (orderId) {
           newOrder.rawId = orderId;
-          newOrder.id = `#ORD${String(orderId).padStart(3, "0")}`;
-          if (serverRes.total_amount || serverRes.data?.total_amount) {
-            newOrder.total = parseFloat(serverRes.total_amount || serverRes.data.total_amount);
+          const assignedCode = respData.order_code ? (respData.order_code.startsWith("#") ? respData.order_code : `#${respData.order_code}`) : `#ORD${String(orderId).padStart(3, "0")}`;
+          newOrder.order_code = assignedCode;
+          newOrder.id = assignedCode;
+          if (respData.total_amount) {
+            newOrder.total = parseFloat(respData.total_amount);
           }
           // รอร้านค้ารับออเดอร์ก่อน ถึงจะสร้างและดึง QR Code PromptPay
           newOrder.status = "PENDING_ACCEPT";
@@ -1013,7 +1020,7 @@ function CustomerHome({ search, setSearch, category, setCategory, foods, menu, f
     <section className="discovery-section menu-section" id="menu" data-scroll-reveal>
       <div className="section-heading"><div><span className="section-kicker">อร่อยทุกคำ คัดมาแล้ว</span><h2>เมนูที่น่าลอง</h2></div><span className="menu-section-note">เลื่อนลงมาเจอจานโปรดของคุณ</span></div>
       <div className="menu-gallery-grid">{menu.map((item, index) => <article className="menu-card" data-scroll-reveal key={item.id}>
-        <button className="menu-photo-button" onClick={() => item.store && onStore(item.store)} aria-label={`ดูเมนูร้าน ${item.storeName}: ${item.name}`}><img src={item.image} alt={item.name} loading={index < 4 ? "eager" : "lazy"} /><span>↗</span></button>
+        <button className="menu-photo-button" onClick={() => item.store && onStore(item.store)} aria-label={`ดูเมนูร้าน ${item.storeName}: ${item.name}`}>{item.image ? <img src={item.image} alt={item.name} loading={index < 4 ? "eager" : "lazy"} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "32px", background: "#f8fafc" }}>{item.emoji || "🍲"}</div>}<span>↗</span></button>
         <div className="menu-card-info"><div><small>{item.storeName}</small><b>{item.name}</b></div><div className="menu-card-meta"><span>★ {item.store?.rating || 4.8}</span><b>฿{item.price}</b></div></div>
       </article>)}</div>
     </section>
@@ -1155,8 +1162,12 @@ function CustomerStore({ store, onBack, onCustomize, onBasket, cartCount }) {
         <div className="store-menu-grid">
           {displayedMenu.map((item) => (
             <article className="store-menu-item" key={item.id}>
-              <div className="store-menu-photo">
-                <img src={item.image} alt={item.name} loading="lazy" />
+              <div className="store-menu-photo" style={{ display: "flex", alignItems: "center", justifyContent: "center", background: "#f8fafc", fontSize: "32px" }}>
+                {item.image ? (
+                  <img src={item.image} alt={item.name} loading="lazy" />
+                ) : (
+                  <span>{item.emoji || "🍲"}</span>
+                )}
               </div>
               <div className="store-menu-item-info">
                 <div>
@@ -1188,7 +1199,7 @@ function CustomerStore({ store, onBack, onCustomize, onBasket, cartCount }) {
 function CustomizationModal({ item, options, selected, setSelected, note, setNote, qty, setQty, onClose, onConfirm }) {
   const addonsTotal = options.filter((option) => selected.includes(option.id)).reduce((sum, option) => sum + option.price, 0);
   const toggle = (id) => setSelected((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
-  return <div className="customize-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="customize-dialog" role="dialog" aria-modal="true" aria-labelledby="customize-title"><button className="customize-close" onClick={onClose} aria-label="ปิด">×</button><div className="customize-product"><img src={item.image} alt={item.name} /><div><small>ปรับแต่งเมนู</small><h2 id="customize-title">{item.name}</h2><span>฿{item.price}</span></div></div><div className="customize-section-heading"><b>เพิ่มความอร่อย</b><small>เลือกได้หลายรายการ</small></div><div className="customize-options">{options.map((option) => <label className="customize-option" key={option.id}><input type="checkbox" checked={selected.includes(option.id)} onChange={() => toggle(option.id)} /><span>{option.name}</span><b>+฿{option.price}</b></label>)}</div><label className="customize-note"><b>หมายเหตุถึงร้าน</b><textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="เช่น ไม่ใส่ผัก เผ็ดน้อย แยกน้ำซอส" maxLength={180} /><small>{note.length}/180</small></label><div className="customize-footer"><div className="qty customize-qty"><button onClick={() => setQty(Math.max(1, qty - 1))}>−</button><span>{qty}</span><button onClick={() => setQty(qty + 1)}>＋</button></div><button className="primary-btn" onClick={onConfirm}>เพิ่มลงตะกร้า · ฿{(item.price + addonsTotal) * qty}</button></div></section></div>;
+  return <div className="customize-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="customize-dialog" role="dialog" aria-modal="true" aria-labelledby="customize-title"><button className="customize-close" onClick={onClose} aria-label="ปิด">×</button><div className="customize-product">{item.image ? <img src={item.image} alt={item.name} /> : <div style={{ width: "64px", height: "64px", borderRadius: "12px", background: "#fff7ed", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "32px", flexShrink: 0 }}>{item.emoji || "🍲"}</div>}<div><small>ปรับแต่งเมนู</small><h2 id="customize-title">{item.name}</h2><span>฿{item.price}</span></div></div><div className="customize-section-heading"><b>เพิ่มความอร่อย</b><small>เลือกได้หลายรายการ</small></div><div className="customize-options">{options.map((option) => <label className="customize-option" key={option.id}><input type="checkbox" checked={selected.includes(option.id)} onChange={() => toggle(option.id)} /><span>{option.name}</span><b>+฿{option.price}</b></label>)}</div><label className="customize-note"><b>หมายเหตุถึงร้าน</b><textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="เช่น ไม่ใส่ผัก เผ็ดน้อย แยกน้ำซอส" maxLength={180} /><small>{note.length}/180</small></label><div className="customize-footer"><div className="qty customize-qty"><button onClick={() => setQty(Math.max(1, qty - 1))}>−</button><span>{qty}</span><button onClick={() => setQty(qty + 1)}>＋</button></div><button className="primary-btn" onClick={onConfirm}>เพิ่มลงตะกร้า · ฿{(item.price + addonsTotal) * qty}</button></div></section></div>;
 }
 
 function Basket({ cart, subtotal, deliveryFee, total, changeQty, onBack, onNext, isLoggedIn, hasAddress, savedAddress, onRequireLogin, onRequireAddress }) {
@@ -1231,8 +1242,12 @@ function Basket({ cart, subtotal, deliveryFee, total, changeQty, onBack, onNext,
       {cart.length ? (
         cart.map((item) => (
           <div className="cart-row" key={item.cartLineId || item.id}>
-            <div className="food-thumb cart-item-image">
-              <img src={item.image} alt={item.name} />
+            <div className="food-thumb cart-item-image" style={{ display: "flex", alignItems: "center", justifyContent: "center", background: "#fff7ed", fontSize: "24px" }}>
+              {item.image ? (
+                <img src={item.image} alt={item.name} />
+              ) : (
+                <span>{item.emoji || "🍲"}</span>
+              )}
             </div>
             <div className="cart-row-info">
               <b>{item.name}</b>
@@ -1461,9 +1476,23 @@ function Recent({ orders, onOpen, onHome }) {
                 </div>
 
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <b style={{ fontSize: "14px", color: "#1e293b", display: "block", textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
-                    {order.store}
-                  </b>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "3px" }}>
+                    <span style={{
+                      background: "#f8fafc",
+                      color: "#ea580c",
+                      border: "1px solid #fed7aa",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      padding: "1px 6px",
+                      borderRadius: "6px",
+                      letterSpacing: "0.5px"
+                    }}>
+                      {order.order_code || order.id}
+                    </span>
+                    <b style={{ fontSize: "14px", color: "#1e293b", textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
+                      {order.store}
+                    </b>
+                  </div>
                   <small style={{ color: "#64748b", display: "block", fontSize: "12px", textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap", margin: "2px 0" }}>
                     {Array.isArray(order.items) ? order.items.join(" · ") : order.items || "รายการอาหาร"}
                   </small>
@@ -1528,12 +1557,12 @@ function Delivery({ order, onBack, onChat, onVerifySlip, onCancelOrder, unreadMe
 
   return (
     <div style={{ paddingBottom: "140px" }}>
-      <TopBar title={`ออเดอร์ ${order?.id || "#ORD001"}`} subtitle="ติดตามสถานะจัดส่ง" onBack={onBack} />
+      <TopBar title={`ออเดอร์ ${order?.order_code || order?.id || "#ORD001"}`} subtitle="ติดตามสถานะจัดส่ง" onBack={onBack} />
 
       <div className="delivery-card" style={{ margin: "12px", padding: "16px", borderRadius: "16px", background: "white", border: "1px solid #e2e8f0" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
           <div>
-            <b style={{ fontSize: "16px", color: "#1e293b", display: "block" }}>{order?.id || "#ORD001"}</b>
+            <b style={{ fontSize: "16px", color: "#1e293b", display: "block" }}>{order?.order_code || order?.id || "#ORD001"}</b>
             <small style={{ color: "#64748b" }}>{order?.date || "วันนี้"}</small>
           </div>
           <strong style={{ fontSize: "18px", color: "#ea580c" }}>฿{order?.total || 0}</strong>
