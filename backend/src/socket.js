@@ -182,9 +182,15 @@ module.exports = (io) => {
                 try {
                     knex('ORDERS').where('id', orderId).first().then(orderRecord => {
                         if (orderRecord) {
-                            if (orderRecord.merchant_id) io.to(`merchant_${orderRecord.merchant_id}`).emit('NEW_CHAT_MESSAGE', msgPayload);
-                            if (orderRecord.customer_id) io.to(`customer_${orderRecord.customer_id}`).emit('NEW_CHAT_MESSAGE', msgPayload);
-                            if (orderRecord.rider_id) io.to(`rider_${orderRecord.rider_id}`).emit('NEW_CHAT_MESSAGE', msgPayload);
+                            if (orderRecord.merchant_id && socket.user?.role !== 'MERCHANT') {
+                                io.to(`merchant_${orderRecord.merchant_id}`).emit('NEW_CHAT_MESSAGE', msgPayload);
+                            }
+                            if (orderRecord.customer_id && socket.user?.role !== 'CUSTOMER') {
+                                io.to(`customer_${orderRecord.customer_id}`).emit('NEW_CHAT_MESSAGE', msgPayload);
+                            }
+                            if (orderRecord.rider_id && socket.user?.role !== 'RIDER') {
+                                io.to(`rider_${orderRecord.rider_id}`).emit('NEW_CHAT_MESSAGE', msgPayload);
+                            }
                         }
                     }).catch(() => {});
                 } catch (e) {}

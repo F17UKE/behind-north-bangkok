@@ -553,9 +553,18 @@ export default function CustomerPage() {
     // ฟังข้อความแชทใหม่ Real-time
     const handleNewChat = (payload) => {
       console.log("💬 [Customer Socket] NEW_CHAT_MESSAGE:", payload);
+      // ตรวจสอบว่าไม่ใช่ข้อความที่ตนเอง (Customer) เป็นคนส่ง
+      if (!payload.is_merchant_sender && (payload.role === 'CUSTOMER' || !payload.sender_sub_role)) {
+        return;
+      }
       playOrderChime();
       setUnreadChatCount(c => c + 1);
-      setApiNotice(`💬 มีข้อความใหม่จากร้านค้า: ${payload.content_text || payload.contentText || ""}`);
+
+      // ระบุว่าข้อความมาจากร้านค้า หรือ ไรเดอร์
+      const senderTitle = payload.sender_sub_role === "RIDER" ? "ไรเดอร์" : "ร้านค้า";
+      const messagePreview = payload.content_text || payload.contentText || "";
+      setApiNotice(`💬 มีข้อความใหม่จาก${senderTitle}: ${messagePreview}`);
+      setTimeout(() => setApiNotice(""), 4500);
     };
 
     const handleDeliveryFeeUpdate = (payload) => {
@@ -2249,12 +2258,11 @@ function CustomerChat({ order, storeName, onBack }) {
       setLoading(true);
       try {
         const hist = await orderApi.getChatHistory(orderId, "CUSTOMER");
-        if (Array.isArray(hist)) {
-          setMessages(hist);
-          if (hist.length > 0) {
-            const lastId = hist[hist.length - 1].id;
-            await orderApi.markAsRead(orderId, lastId, "CUSTOMER");
-          }
+        const list = Array.isArray(hist) ? hist : (hist?.data || hist?.messages || []);
+        setMessages(list);
+        if (list.length > 0) {
+          const lastId = list[list.length - 1].id;
+          if (lastId) await orderApi.markAsRead(orderId, lastId, "CUSTOMER").catch(() => {});
         }
       } catch (err) {
         console.warn("Could not fetch chat history:", err);
@@ -2266,7 +2274,7 @@ function CustomerChat({ order, storeName, onBack }) {
 
     const socket = getSocket("CUSTOMER");
     if (socket) {
-      socket.emit("join_order_room", { orderId });
+      socket.emit("join_order_room", { orderId: Number(orderId), order_id: Number(orderId) });
 
       const handleMsg = (payload) => {
         if (Number(payload.order_id || payload.orderId) === orderId) {
@@ -2296,10 +2304,11 @@ function CustomerChat({ order, storeName, onBack }) {
 
     try {
       const res = await orderApi.sendMessage(orderId, sendText, "CUSTOMER");
-      if (res?.data) {
+      const newMsg = res?.data || (res?.id ? res : null);
+      if (newMsg) {
         setMessages(prev => {
-          if (prev.some(m => m.id === res.data.id)) return prev;
-          return [...prev, res.data];
+          if (prev.some(m => m.id === newMsg.id)) return prev;
+          return [...prev, newMsg];
         });
       }
     } catch (err) {

@@ -462,10 +462,11 @@ function RiderChatModal({ order, onClose, onRead }) {
     async function loadChat() {
       try {
         const res = await orderApi.getChatHistory(order.id, "RIDER");
-        if (isMounted && res?.messages) {
-          setMessages(res.messages);
-          if (res.messages.length > 0) {
-            const last = res.messages[res.messages.length - 1];
+        const list = Array.isArray(res) ? res : (res?.data || res?.messages || []);
+        if (isMounted) {
+          setMessages(list);
+          if (list.length > 0) {
+            const last = list[list.length - 1];
             if (last?.id) {
               await orderApi.markAsRead(order.id, last.id, "RIDER").catch(() => null);
               if (onRead) onRead(order.id);
@@ -483,7 +484,7 @@ function RiderChatModal({ order, onClose, onRead }) {
 
     const socket = getSocket("RIDER");
     if (socket) {
-      socket.emit("join_order_room", { order_id: order.id });
+      socket.emit("join_order_room", { orderId: order.id, order_id: order.id });
 
       const handleIncoming = (payload) => {
         if (Number(payload.order_id || payload.orderId) === Number(order.id)) {
@@ -520,8 +521,12 @@ function RiderChatModal({ order, onClose, onRead }) {
 
     try {
       const res = await orderApi.sendMessage(order.id, content, "RIDER");
-      if (res?.message) {
-        setMessages(prev => [...prev, res.message]);
+      const newMsg = res?.data || (res?.id ? res : null);
+      if (newMsg) {
+        setMessages(prev => {
+          if (prev.some(m => m.id === newMsg.id)) return prev;
+          return [...prev, newMsg];
+        });
       }
     } catch (err) {
       console.error("Rider send message error:", err);

@@ -163,13 +163,14 @@ exports.sendMessage = async (req, res) => {
         role: senderSubRole || (isMerchantSender ? 'STORE' : 'CUSTOMER')
       };
       io.to(`order_${order_id}`).emit('new_message', messagePayload);
-      if (access.order?.merchant_id) {
+      // ส่งการแจ้งเตือนเฉพาะผู้รับ (ไม่ส่งเตือนกลับไปยังผู้ที่เพิ่งพิมพ์ข้อความ)
+      if (access.order?.merchant_id && req.user.role !== 'MERCHANT') {
         io.to(`merchant_${access.order.merchant_id}`).emit('NEW_CHAT_MESSAGE', messagePayload);
       }
-      if (access.order?.customer_id) {
+      if (access.order?.customer_id && req.user.role !== 'CUSTOMER') {
         io.to(`customer_${access.order.customer_id}`).emit('NEW_CHAT_MESSAGE', messagePayload);
       }
-      if (access.order?.rider_id) {
+      if (access.order?.rider_id && req.user.role !== 'RIDER') {
         io.to(`rider_${access.order.rider_id}`).emit('NEW_CHAT_MESSAGE', messagePayload);
       }
     }

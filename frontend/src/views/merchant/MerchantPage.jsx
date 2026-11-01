@@ -24,6 +24,7 @@ export default function MerchantPage() {
   const [currentMerchant, setCurrentMerchant] = useState(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [unreadChatCount, setUnreadChatCount] = useState(0);
+  const [selectedChatOrder, setSelectedChatOrder] = useState(null);
 
   useEffect(() => {
     const logged = authApi.isLoggedIn("MERCHANT");
@@ -371,6 +372,10 @@ export default function MerchantPage() {
             setQuery={setQuery} 
             onBack={() => setScreen("home")} 
             updateOrder={updateOrder} 
+            onOpenChat={(ord) => {
+              setSelectedChatOrder(ord);
+              setScreen("chat");
+            }}
           />
         )}
         {screen === "delivery" && (
@@ -379,11 +384,16 @@ export default function MerchantPage() {
             deliveryFee={deliveryFee} 
             setDeliveryFee={setDeliveryFee} 
             onBack={() => setScreen("home")} 
+            onOpenChat={(ord) => {
+              setSelectedChatOrder(ord);
+              setScreen("chat");
+            }}
           />
         )}
         {screen === "chat" && (
           <MerchantChat 
             orders={orders}
+            initialOrder={selectedChatOrder}
             onBack={() => setScreen("orders")} 
             onUnreadChange={setUnreadChatCount}
           />
@@ -399,7 +409,7 @@ export default function MerchantPage() {
             { key: "orders", label: `ออเดอร์ (${orders.filter(o => ["PENDING_ACCEPT", "PENDING_PAYMENT"].includes(o.status)).length})`, icon: "▣" },
             { key: "kds", label: `จอครัว (${orders.filter(o => o.status === "PREPARING").length})`, icon: "🍳" },
             { key: "menus", label: "เมนู", icon: "🍲" },
-            { key: "delivery", label: "จัดส่ง", icon: "🛵" },
+            { key: "delivery", label: orders.filter(o => o.status === "READY_FOR_DELIVERY" && !o.roomNumber?.includes("รับเอง")).length > 0 ? `จัดส่ง (${orders.filter(o => o.status === "READY_FOR_DELIVERY" && !o.roomNumber?.includes("รับเอง")).length})` : "จัดส่ง", icon: "🛵" },
             { key: "chat", label: unreadChatCount > 0 ? `แชท (${unreadChatCount})` : "แชท", icon: "💬" }
           ]} 
         />
@@ -526,7 +536,7 @@ function MerchantHome({ orders, go, query, setQuery, merchant, onLogout }) {
   );
 }
 
-function MerchantOrders({ orders, filter, setFilter, query, setQuery, onBack, updateOrder }) {
+function MerchantOrders({ orders, filter, setFilter, query, setQuery, onBack, updateOrder, onOpenChat }) {
   return (
     <>
       <TopBar title="จัดการออเดอร์" subtitle="Real-time Order Management" onBack={onBack} />
@@ -597,6 +607,22 @@ function MerchantOrders({ orders, filter, setFilter, query, setQuery, onBack, up
                     >
                       ✕ ปฏิเสธ
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => onOpenChat && onOpenChat(o)}
+                      style={{
+                        background: "#f1f5f9",
+                        color: "#334155",
+                        border: "1px solid #cbd5e1",
+                        borderRadius: "8px",
+                        padding: "6px 10px",
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        cursor: "pointer"
+                      }}
+                    >
+                      💬 แชท
+                    </button>
                   </>
                 )}
                 {o.status === "PENDING_PAYMENT" && (
@@ -647,7 +673,7 @@ function MerchantOrders({ orders, filter, setFilter, query, setQuery, onBack, up
   );
 }
 
-function MerchantDelivery({ orders, deliveryFee, setDeliveryFee, onBack, loadMerchantOrders }) {
+function MerchantDelivery({ orders, deliveryFee, setDeliveryFee, onBack, loadMerchantOrders, onOpenChat }) {
   const [tab, setTab] = useState("dispatch"); // "dispatch" | "soi_fees" | "riders"
   const [riders, setRiders] = useState([]);
   const [sois, setSois] = useState([]);
@@ -932,9 +958,30 @@ function MerchantDelivery({ orders, deliveryFee, setDeliveryFee, onBack, loadMer
                 </div>
 
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "10px" }}>
-                  <StatusPill tone={o.status === "READY_FOR_DELIVERY" ? "yellow" : o.status === "IN_DELIVERY" ? "orange" : "green"}>
-                    {statusLabel[o.status] || o.status}
-                  </StatusPill>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <StatusPill tone={o.status === "READY_FOR_DELIVERY" ? "yellow" : o.status === "IN_DELIVERY" ? "orange" : "green"}>
+                      {statusLabel[o.status] || o.status}
+                    </StatusPill>
+                    <button
+                      type="button"
+                      onClick={() => onOpenChat && onOpenChat(o)}
+                      style={{
+                        background: "#f8fafc",
+                        color: "#334155",
+                        border: "1px solid #cbd5e1",
+                        borderRadius: "8px",
+                        padding: "5px 10px",
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "4px"
+                      }}
+                    >
+                      💬 แชท
+                    </button>
+                  </div>
 
                   {/* Actions for READY_FOR_DELIVERY */}
                   {o.status === "READY_FOR_DELIVERY" && (
@@ -1389,45 +1436,271 @@ function MerchantDelivery({ orders, deliveryFee, setDeliveryFee, onBack, loadMer
   );
 }
 
-function MerchantChat({ selected, setSelected, messages, value, setValue, onSend, onBack }) {
-  const contacts = ["นักศึกษา มจพ.", "Petchtae", "Thanakrit", "Napat", "บ้านหลังมอ", "Chonlatit"];
+function MerchantChat({ orders, initialOrder, onBack, onUnreadChange }) {
+  const activeChatOrders = useMemo(() => {
+    const active = orders.filter(o => !["REJECTED_BY_MERCHANT", "CANCELLED_BY_CUSTOMER", "CANCELLED_BY_TIMEOUT"].includes(o.status));
+    return active.length > 0 ? active : orders;
+  }, [orders]);
+
+  const [selectedOrder, setSelectedOrder] = useState(
+    initialOrder || activeChatOrders[0] || orders[0] || null
+  );
+  const [messages, setMessages] = useState([]);
+  const [text, setText] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [sending, setSending] = useState(false);
+
+  const orderId = selectedOrder?.rawId || (selectedOrder?.id ? Number(String(selectedOrder.id).replace(/\D/g, "")) : null);
+
+  useEffect(() => {
+    if (!orderId) return;
+    let isMounted = true;
+
+    async function loadChat() {
+      setLoading(true);
+      try {
+        const res = await orderApi.getChatHistory(orderId, "MERCHANT");
+        const list = Array.isArray(res) ? res : (res?.data || res?.messages || []);
+        if (isMounted) {
+          setMessages(list);
+          if (list.length > 0) {
+            const last = list[list.length - 1];
+            if (last?.id) {
+              await orderApi.markAsRead(orderId, last.id, "MERCHANT").catch(() => null);
+              if (onUnreadChange) onUnreadChange(0);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("Could not load merchant chat:", err);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    }
+
+    loadChat();
+
+    const socket = getSocket("MERCHANT");
+    if (socket) {
+      socket.emit("join_order_room", { orderId: Number(orderId), order_id: Number(orderId) });
+
+      const handleIncoming = (payload) => {
+        if (Number(payload.order_id || payload.orderId) === Number(orderId)) {
+          setMessages(prev => {
+            if (prev.some(m => m.id === payload.id)) return prev;
+            return [...prev, payload];
+          });
+          playOrderChime();
+          if (payload.id) {
+            orderApi.markAsRead(orderId, payload.id, "MERCHANT").catch(() => null);
+          }
+        }
+      };
+
+      socket.on("new_message", handleIncoming);
+      socket.on("NEW_CHAT_MESSAGE", handleIncoming);
+
+      return () => {
+        isMounted = false;
+        socket.off("new_message", handleIncoming);
+        socket.off("NEW_CHAT_MESSAGE", handleIncoming);
+      };
+    }
+  }, [orderId]);
+
+  async function handleSend(e) {
+    e.preventDefault();
+    if (!text.trim() || !orderId || sending) return;
+
+    const content = text.trim();
+    setText("");
+    setSending(true);
+
+    try {
+      const res = await orderApi.sendMessage(orderId, content, "MERCHANT");
+      const newMsg = res?.data || (res?.id ? res : null);
+      if (newMsg) {
+        setMessages(prev => {
+          if (prev.some(m => m.id === newMsg.id)) return prev;
+          return [...prev, newMsg];
+        });
+      }
+    } catch (err) {
+      alert("ส่งข้อความไม่สำเร็จ: " + (err?.response?.data?.error || err.message));
+    } finally {
+      setSending(false);
+    }
+  }
+
   return (
-    <>
-      <TopBar title="แชทติดต่อลูกค้า" subtitle="Direct Customer Chat" onBack={onBack} />
-      <div className="merchant-chat-layout">
-        <div className="contact-list">
-          {contacts.map((c) => (
-            <button className={selected === c ? "selected" : ""} key={c} onClick={() => setSelected(c)}>
-              <div className="avatar small">👤</div>
-              <div>
-                <b>{c}</b>
-                <small>{c === selected ? "ข้อความล่าสุด..." : "Order message..."}</small>
-              </div>
-              <span>เมื่อสักครู่</span>
-            </button>
-          ))}
-        </div>
-        <div className="chat-panel">
-          <div className="chat-panel-top">
-            <div className="avatar small">👤</div>
-            <div>
-              <b>{selected}</b>
-              <small>online (เชื่อมต่อพร้อมแชท)</small>
-            </div>
-          </div>
-          <div className="chat-messages short">
-            {messages.filter((m) => m.user === selected).map((m, i) => (
-              <div className="chat-bubble me" key={i}>{m.text}</div>
-            ))}
-            <div className="chat-bubble store">สวัสดีครับ ร้านได้รับออเดอร์เรียบร้อยแล้ว กำลังจัดเตรียมให้นะครับ</div>
-          </div>
-          <form className="chat-compose" onSubmit={onSend}>
-            <input value={value} onChange={(e) => setValue(e.target.value)} placeholder="พิมพ์ข้อความตอบกลับ..." />
-            <button type="submit">➤</button>
-          </form>
-        </div>
+    <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "#f8fafc" }}>
+      <TopBar 
+        title={selectedOrder ? `แชท: ${selectedOrder.customer || "ลูกค้า"}` : "แชทติดต่อออเดอร์"} 
+        subtitle={selectedOrder ? `${selectedOrder.id} · แชทกลุ่ม 3 คน (ลูกค้า / ร้าน / ไรเดอร์)` : "เลือกออเดอร์เพื่อเริ่มสนทนา"} 
+        onBack={onBack} 
+      />
+
+      {/* แถบเลือกออเดอร์ด้านบนแบบ Scrollable */}
+      <div style={{
+        display: "flex",
+        gap: "8px",
+        padding: "8px 12px",
+        background: "#ffffff",
+        borderBottom: "1px solid #e2e8f0",
+        overflowX: "auto",
+        whiteSpace: "nowrap"
+      }}>
+        {activeChatOrders.length > 0 ? (
+          activeChatOrders.map((ord) => {
+            const isSelected = selectedOrder?.id === ord.id;
+            return (
+              <button
+                key={ord.id}
+                type="button"
+                onClick={() => setSelectedOrder(ord)}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: "20px",
+                  border: isSelected ? "1.5px solid #10b981" : "1px solid #cbd5e1",
+                  background: isSelected ? "#ecfdf5" : "#f1f5f9",
+                  color: isSelected ? "#065f46" : "#475569",
+                  fontSize: "12px",
+                  fontWeight: isSelected ? 800 : 600,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  flexShrink: 0
+                }}
+              >
+                <span>{ord.id}</span>
+                <span style={{ opacity: 0.8 }}>({ord.customer?.slice(0, 8)})</span>
+              </button>
+            );
+          })
+        ) : (
+          <span style={{ fontSize: "12px", color: "#94a3b8", padding: "4px" }}>ไม่มีออเดอร์ในขณะนี้</span>
+        )}
       </div>
-    </>
+
+      {/* กล่องข้อความแชท 3 คน (ลูกค้า, ร้านค้า, ไรเดอร์) */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "14px 12px 80px", display: "flex", flexDirection: "column", gap: "10px" }}>
+        {loading ? (
+          <div style={{ textAlign: "center", color: "#94a3b8", fontSize: "13px", padding: "40px 0" }}>
+            กำลังโหลดข้อความ...
+          </div>
+        ) : !selectedOrder ? (
+          <div style={{ textAlign: "center", color: "#94a3b8", fontSize: "13px", padding: "40px 0" }}>
+            กรุณาเลือกออเดอร์ด้านบนเพื่อเปิดห้องแชท
+          </div>
+        ) : messages.length > 0 ? (
+          messages.map((m, i) => {
+            const isMe = m.is_merchant_sender && m.sender_sub_role !== "RIDER";
+            const isRider = m.sender_sub_role === "RIDER";
+            const isCustomer = !m.is_merchant_sender;
+
+            return (
+              <div
+                key={m.id || i}
+                style={{
+                  alignSelf: isMe ? "flex-end" : "flex-start",
+                  maxWidth: "78%",
+                  padding: "10px 14px",
+                  borderRadius: isMe ? "14px 14px 2px 14px" : "14px 14px 14px 2px",
+                  background: isMe 
+                    ? "linear-gradient(135deg, #10b981 0%, #059669 100%)" 
+                    : isRider 
+                    ? "#fffbeb" 
+                    : "#ffffff",
+                  color: isMe ? "white" : "#1e293b",
+                  border: isMe ? "none" : isRider ? "1.5px solid #fde68a" : "1px solid #e2e8f0",
+                  fontSize: "13px",
+                  boxShadow: "0 2px 6px rgba(0,0,0,0.04)"
+                }}
+              >
+                <small style={{
+                  display: "block",
+                  color: isMe ? "rgba(255,255,255,0.85)" : isRider ? "#d97706" : "#64748b",
+                  fontSize: "10px",
+                  fontWeight: 700,
+                  marginBottom: "2px"
+                }}>
+                  {isMe ? "🍲 ร้านค้า (คุณ)" : isRider ? "🛵 ไรเดอร์" : `👤 ลูกค้า (${selectedOrder.customer || "ลูกค้า"})`}
+                </small>
+                <div>{m.content_text || m.text}</div>
+                <small style={{
+                  display: "block",
+                  textAlign: "right",
+                  fontSize: "9px",
+                  opacity: 0.8,
+                  marginTop: "4px"
+                }}>
+                  {m.created_at ? new Date(m.created_at).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" }) : ""}
+                </small>
+              </div>
+            );
+          })
+        ) : (
+          <div style={{ textAlign: "center", color: "#94a3b8", fontSize: "13px", padding: "40px 0" }}>
+            💬 ยังไม่มีข้อความในออเดอร์นี้ พิมพ์ทักทายลูกค้าและไรเดอร์ได้เลยครับ
+          </div>
+        )}
+      </div>
+
+      {/* กล่องพิมพ์ข้อความ */}
+      {selectedOrder && (
+        <form
+          onSubmit={handleSend}
+          style={{
+            position: "fixed",
+            bottom: 0,
+            left: 0,
+            right: 0,
+            background: "white",
+            borderTop: "1px solid #e2e8f0",
+            padding: "10px 14px",
+            display: "flex",
+            gap: "8px",
+            alignItems: "center",
+            zIndex: 99
+          }}
+        >
+          <input
+            type="text"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder={`พิมพ์ข้อความตอบกลับ ${selectedOrder.customer || "ลูกค้า"} และไรเดอร์...`}
+            style={{
+              flex: 1,
+              padding: "10px 14px",
+              borderRadius: "20px",
+              border: "1px solid #cbd5e1",
+              fontSize: "13px",
+              outline: "none"
+            }}
+          />
+          <button
+            type="submit"
+            disabled={!text.trim() || sending}
+            style={{
+              background: text.trim() ? "linear-gradient(135deg, #10b981 0%, #059669 100%)" : "#cbd5e1",
+              color: "white",
+              border: "none",
+              borderRadius: "50%",
+              width: "40px",
+              height: "40px",
+              cursor: text.trim() ? "pointer" : "default",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: "16px"
+            }}
+          >
+            ➤
+          </button>
+        </form>
+      )}
+    </div>
   );
 }
 

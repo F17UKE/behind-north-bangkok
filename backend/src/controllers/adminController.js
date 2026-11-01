@@ -83,6 +83,7 @@ const approveMerchant = async (req, res) => {
             .where('id', merchant_id)
             .update({
                 is_approved: true,
+                is_open: true, // เปิดร้านอัตโนมัติเมื่อแอดมินอนุมัติ
                 approved_at: knex.fn.now()
             })
             .returning(['id', 'username', 'store_name', 'is_approved', 'is_open']);

@@ -1,14 +1,17 @@
 const db = require('../db');
 
 class MerchantRepository {
-  // 1. ดึงรายการร้านค้าทั้งหมดที่เปิดให้บริการ (is_open = true และผ่านการอนุมัติ is_approved = true)
+  // 1. ดึงรายการร้านค้าทั้งหมดที่ผ่านการอนุมัติ (is_approved = true และไม่ถูกระงับ)
   async findAllOpenMerchants() {
     return await db('MERCHANTS')
       .select('id', 'store_name', 'prefix', 'is_open', 'location', 'store_image_url')
-      .where('is_open', true)
-      .andWhere(function() {
+      .where(function() {
         this.where('is_approved', true).orWhereNull('is_approved');
-      });
+      })
+      .andWhere(function() {
+        this.where('is_suspended', false).orWhereNull('is_suspended');
+      })
+      .orderBy('id', 'desc');
   }
 
   // 2. ดึงข้อมูลรายละเอียดร้านค้าเดี่ยวตาม merchant_id
