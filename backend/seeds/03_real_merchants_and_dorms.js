@@ -100,15 +100,16 @@ exports.seed = async function(knex) {
   await knex('DORMITORIES').insert(dorms);
 
   // ร้านค้า (7 ร้าน)
-  const defaultPw = await hashPassword('password123');
+  const merchantPw = await hashPassword('merchant1234');
+  const customerPw = await hashPassword('password123');
   const merchantsData = [
-    { id: 1, username: 'kinraidee', password_hash: defaultPw, store_name: 'KIN RAI DEE', promptpay_id: '0811111111', prefix: 'KRD', is_open: true, is_approved: true, location: 'หลังมอ มจพ. ซอย 11', store_image_url: '/store-fusion.webp' },
-    { id: 2, username: 'kinkhaomai', password_hash: defaultPw, store_name: 'กินข้าวมั้ย', promptpay_id: '0822222222', prefix: 'KKM', is_open: true, is_approved: true, location: 'หลังมอ มจพ. ซอย 11', store_image_url: '/store-kitchen.webp' },
-    { id: 3, username: 'muangnon', password_hash: defaultPw, store_name: 'เมืองนนท์หมูกระทะ', promptpay_id: '0833333333', prefix: 'MNM', is_open: true, is_approved: true, location: 'ซอยวงศ์สว่าง 11', store_image_url: '/store-grill.webp' },
-    { id: 4, username: 'kruamaesri', password_hash: defaultPw, store_name: 'ครัวแม่ศรี หรอยแรง แกงใต้', promptpay_id: '0844444444', prefix: 'KMS', is_open: true, is_approved: true, location: 'หลังมอ มจพ.', store_image_url: '/store-curry.webp' },
-    { id: 5, username: 'yentafo', password_hash: defaultPw, store_name: 'ก๋วยเตี๋ยวลูกชิ้นปลาเย็นตาโฟ', promptpay_id: '0855555555', prefix: 'KTP', is_open: true, is_approved: true, location: 'หลังมอ มจพ.', store_image_url: '/store-noodles.webp' },
-    { id: 6, username: 'chefjenny', password_hash: defaultPw, store_name: 'ตามสั่ง by เชฟเจนนี่', promptpay_id: '0866666666', prefix: 'CJN', is_open: true, is_approved: true, location: 'หลังมอ ซอย 11', store_image_url: '/store-chicken.webp' },
-    { id: 7, username: 'meekaichik', password_hash: defaultPw, store_name: 'หมี่ไก่ฉีก by JK', promptpay_id: '0877777777', prefix: 'MJK', is_open: true, is_approved: true, location: 'หลังมอ ซอย 11', store_image_url: '/store-boat-noodles.webp' }
+    { id: 1, username: 'kinraidee', password_hash: merchantPw, store_name: 'KIN RAI DEE', promptpay_id: '0811111111', prefix: 'KRD', is_open: true, is_approved: true, location: 'หลังมอ มจพ. ซอย 11', store_image_url: null },
+    { id: 2, username: 'kinkhaomai', password_hash: merchantPw, store_name: 'กินข้าวมั้ย', promptpay_id: '0822222222', prefix: 'KKM', is_open: true, is_approved: true, location: 'หลังมอ มจพ. ซอย 11', store_image_url: null },
+    { id: 3, username: 'muangnon', password_hash: merchantPw, store_name: 'เมืองนนท์หมูกระทะ', promptpay_id: '0833333333', prefix: 'MNM', is_open: true, is_approved: true, location: 'ซอยวงศ์สว่าง 11', store_image_url: null },
+    { id: 4, username: 'kruamaesri', password_hash: merchantPw, store_name: 'ครัวแม่ศรี หรอยแรง แกงใต้', promptpay_id: '0844444444', prefix: 'KMS', is_open: true, is_approved: true, location: 'หลังมอ มจพ.', store_image_url: null },
+    { id: 5, username: 'yentafo', password_hash: merchantPw, store_name: 'ก๋วยเตี๋ยวลูกชิ้นปลาเย็นตาโฟ', promptpay_id: '0855555555', prefix: 'KTP', is_open: true, is_approved: true, location: 'หลังมอ มจพ.', store_image_url: null },
+    { id: 6, username: 'chefjenny', password_hash: merchantPw, store_name: 'ตามสั่ง by เชฟเจนนี่', promptpay_id: '0866666666', prefix: 'CJN', is_open: true, is_approved: true, location: 'หลังมอ ซอย 11', store_image_url: null },
+    { id: 7, username: 'meekaichik', password_hash: merchantPw, store_name: 'หมี่ไก่ฉีก by JK', promptpay_id: '0877777777', prefix: 'MJK', is_open: true, is_approved: true, location: 'หลังมอ ซอย 11', store_image_url: null }
   ];
   await knex('MERCHANTS').insert(merchantsData);
 
@@ -309,7 +310,7 @@ exports.seed = async function(knex) {
       id: 1,
       username: 'student',
       email: 'student@kmutnb.ac.th',
-      password_hash: defaultPw,
+      password_hash: customerPw,
       phone: '0812345678',
       room_number: '101',
       dormitory_id: 1

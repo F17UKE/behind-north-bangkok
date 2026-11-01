@@ -50,6 +50,8 @@ export default function CustomerPage() {
     { from: "store", text: "กำลังเตรียมอาหารให้ครับ" },
   ]);
 
+  const [pendingReturnScreen, setPendingReturnScreen] = useState(null);
+
   // 1. ตรวจสอบการล็อกอินและโหลดข้อมูลร้านค้าจาก Backend API เมื่อเปิดหน้า
   useEffect(() => {
     const savedUser = authApi.getCurrentUser("CUSTOMER");
@@ -72,6 +74,7 @@ export default function CustomerPage() {
       if (Array.isArray(data) && data.length > 0) {
         const merged = data.map((store, i) => {
           const fallback = customerFoods.find(cf => cf.id === store.id || cf.name.toLowerCase() === store.store_name.toLowerCase()) || customerFoods[i % customerFoods.length];
+          const hasRealPhoto = store.store_image_url && (store.store_image_url.startsWith("http://") || store.store_image_url.startsWith("https://"));
           return {
             id: store.id,
             name: store.store_name,
@@ -79,7 +82,7 @@ export default function CustomerPage() {
             rating: fallback?.rating || 4.8,
             price: fallback?.price || 50,
             emoji: fallback?.emoji || "🍛",
-            photo: (store.store_image_url && store.store_image_url.startsWith("http")) ? store.store_image_url : fallback?.photo || "/store-kitchen.webp",
+            photo: hasRealPhoto ? store.store_image_url : null,
             delivery: fallback?.delivery || "20–30 นาที",
             fee: fallback?.fee || "ส่ง ฿10",
             tags: fallback?.tags || ["เปิดบริการ"],
@@ -233,6 +236,14 @@ export default function CustomerPage() {
 
   // ส่งออเดอร์ไปยัง Backend API
   async function placeOrder() {
+    // ตรวจสอบว่าเข้าสู่ระบบแล้วหรือยัง ถ้ายังให้พาไปหน้า Login ทันที
+    if (!authApi.isLoggedIn("CUSTOMER")) {
+      setApiNotice("🔒 กรุณาเข้าสู่ระบบก่อนทำการสั่งซื้ออาหาร");
+      setPendingReturnScreen("place");
+      setScreen("login");
+      return;
+    }
+
     const itemsDescription = cart.map((x) => `${x.name}${x.selectedAddons?.length ? ` (${x.selectedAddons.map((option) => option.name).join(", ")})` : ""}${x.note ? ` · หมายเหตุ: ${x.note}` : ""} x${x.qty}`);
     
     // เตรียม Local Order สำรอง
@@ -331,19 +342,134 @@ export default function CustomerPage() {
 
         {screen === "home" && <CustomerHome search={search} setSearch={setSearch} category={category} setCategory={setCategory} foods={filtered} menu={defaultMenuGallery} featured={heroMenuGallery[heroIndex] || defaultMenuGallery[0]} heroIndex={heroIndex} setHeroIndex={setHeroIndex} heroCount={heroMenuGallery.length || 1} cartCount={cartCount} currentDorm={currentDorm} onOpenDormPicker={() => setShowDormPicker(true)} onStore={openStore} onCart={() => setScreen("basket")} onOrders={() => setScreen("recent")} onProfile={() => setScreen("profile")} />}
         {screen === "store" && <CustomerStore store={selectedStore} cartCount={cartCount} onBack={() => setScreen("home")} onCustomize={openCustomization} onBasket={() => setScreen("basket")} />}
-        {screen === "basket" && <Basket cart={cart} subtotal={subtotal} deliveryFee={deliveryFee} total={total} changeQty={changeQty} onBack={() => setScreen("store")} onNext={() => setScreen("update")} />}
-        {screen === "update" && <UpdateBasket cart={cart} total={total} savedPlace={savedPlace} setSavedPlace={setSavedPlace} changeQty={changeQty} onBack={() => setScreen("basket")} onNext={() => setScreen("place")} />}
-        {screen === "place" && <PlaceOrder cart={cart} subtotal={subtotal} deliveryFee={deliveryFee} total={total} onBack={() => setScreen("update")} onPlace={placeOrder} />}
+        {screen === "basket" && (
+          <Basket
+            cart={cart}
+            subtotal={subtotal}
+            deliveryFee={deliveryFee}
+            total={total}
+            changeQty={changeQty}
+            isLoggedIn={authApi.isLoggedIn("CUSTOMER")}
+            onRequireLogin={() => {
+              setPendingReturnScreen("basket");
+              setScreen("login");
+            }}
+            onBack={() => setScreen("store")}
+            onNext={() => {
+              if (!authApi.isLoggedIn("CUSTOMER")) {
+                setApiNotice("🔒 กรุณาเข้าสู่ระบบก่อนดำเนินการสั่งซื้ออาหาร");
+                setPendingReturnScreen("update");
+                setScreen("login");
+                return;
+              }
+              setScreen("update");
+            }}
+          />
+        )}
+        {screen === "update" && (
+          <UpdateBasket
+            cart={cart}
+            total={total}
+            savedPlace={savedPlace}
+            setSavedPlace={setSavedPlace}
+            changeQty={changeQty}
+            isLoggedIn={authApi.isLoggedIn("CUSTOMER")}
+            onRequireLogin={() => {
+              setPendingReturnScreen("update");
+              setScreen("login");
+            }}
+            onBack={() => setScreen("basket")}
+            onNext={() => {
+              if (!authApi.isLoggedIn("CUSTOMER")) {
+                setApiNotice("🔒 กรุณาเข้าสู่ระบบก่อนดำเนินการสั่งซื้ออาหาร");
+                setPendingReturnScreen("place");
+                setScreen("login");
+                return;
+              }
+              setScreen("place");
+            }}
+          />
+        )}
+        {screen === "place" && (
+          <PlaceOrder
+            cart={cart}
+            subtotal={subtotal}
+            deliveryFee={deliveryFee}
+            total={total}
+            isLoggedIn={authApi.isLoggedIn("CUSTOMER")}
+            onRequireLogin={() => {
+              setPendingReturnScreen("place");
+              setScreen("login");
+            }}
+            onBack={() => setScreen("update")}
+            onPlace={placeOrder}
+          />
+        )}
         {screen === "recent" && <Recent orders={orders} onOpen={(order) => { setSelectedOrder(order); setScreen("delivery"); }} onHome={() => setScreen("home")} />}
         {screen === "delivery" && <Delivery order={selectedOrder} onBack={() => setScreen("recent")} onChat={() => setScreen("chat")} onVerifySlip={() => verifySlip(selectedOrder)} />}
         {screen === "profile" && <Profile profile={profile} savedPlace={savedPlace} onBack={() => setScreen("home")} onSave={() => setScreen("save-place")} onLogin={() => setScreen("login")} onLogout={() => { authApi.logout("CUSTOMER"); setProfile({ name: "นักศึกษา มจพ.", phone: "081-555-2222", isGuest: true }); }} onUpdateProfile={setProfile} />}
         {screen === "save-place" && <SavePlace saved={savedPlace} onBack={() => setScreen("profile")} onSave={() => { setSavedPlace(true); setScreen("profile"); }} />}
         {screen === "chat" && <CustomerChat storeName={selectedOrder?.store} messages={chatMessages} value={chatText} setValue={setChatText} onSend={sendChat} onBack={() => setScreen("delivery")} />}
-        {screen === "login" && <CustomerAuth mode="login" onBack={() => setScreen("profile")} onSuccess={(user) => { setProfile({ name: user.username, phone: user.phone || "08X-XXX-XXXX", isGuest: false }); loadCustomerOrders(); setScreen("home"); }} onSignUp={() => setScreen("signup")} />}
-        {screen === "signup" && <CustomerAuth mode="signup" onBack={() => setScreen("profile")} onSuccess={(user) => { setProfile({ name: user.username, phone: user.phone || "08X-XXX-XXXX", isGuest: false }); setScreen("home"); }} onLogin={() => setScreen("login")} />}
+        {screen === "login" && (
+          <CustomerAuth
+            mode="login"
+            isOrdering={Boolean(pendingReturnScreen)}
+            onBack={() => {
+              if (pendingReturnScreen) {
+                const target = pendingReturnScreen;
+                setPendingReturnScreen(null);
+                setScreen(target);
+              } else {
+                setScreen("profile");
+              }
+            }}
+            onSuccess={(user) => {
+              setProfile({ name: user.username, phone: user.phone || "08X-XXX-XXXX", isGuest: false });
+              loadCustomerOrders();
+              if (pendingReturnScreen) {
+                const target = pendingReturnScreen;
+                setPendingReturnScreen(null);
+                setScreen(target);
+              } else {
+                setScreen("home");
+              }
+            }}
+            onSignUp={() => setScreen("signup")}
+          />
+        )}
+        {screen === "signup" && (
+          <CustomerAuth
+            mode="signup"
+            isOrdering={Boolean(pendingReturnScreen)}
+            onBack={() => {
+              if (pendingReturnScreen) {
+                const target = pendingReturnScreen;
+                setPendingReturnScreen(null);
+                setScreen(target);
+              } else {
+                setScreen("profile");
+              }
+            }}
+            onSuccess={(user) => {
+              setProfile({ name: user.username, phone: user.phone || "08X-XXX-XXXX", isGuest: false });
+              if (pendingReturnScreen) {
+                const target = pendingReturnScreen;
+                setPendingReturnScreen(null);
+                setScreen(target);
+              } else {
+                setScreen("home");
+              }
+            }}
+            onLogin={() => setScreen("login")}
+          />
+        )}
       </div>
       <BottomNav tone="orange" active={screen === "profile" ? "profile" : ["recent", "delivery"].includes(screen) ? "order" : "home"} onChange={nav} items={[{ key: "home", label: "หน้าแรก", icon: "⌂" }, { key: "order", label: "ออเดอร์", icon: "▣" }, { key: "profile", label: "โปรไฟล์", icon: "♙" }, { key: "cart", label: cartCount ? `ตะกร้า (${cartCount})` : "ตะกร้า", icon: "🛒" }]} />
-      <button className="floating-cart-button" onClick={() => setScreen("basket")}>🛒 {cartCount ? `${cartCount} · ${total} ฿` : "0 ฿"}</button>
+      {!["login", "signup"].includes(screen) && (
+        <button className="floating-cart-button" onClick={() => setScreen("basket")}>
+          🛒 {cartCount ? `${cartCount} · ${total} ฿` : "0 ฿"}
+        </button>
+      )}
       {customItem && <CustomizationModal item={customItem} options={customizationOptions[customItem.customizationType] || customizationOptions.rice} selected={customAddons} setSelected={setCustomAddons} note={customNote} setNote={setCustomNote} qty={customQty} setQty={setCustomQty} onClose={() => setCustomItem(null)} onConfirm={confirmCustomization} />}
       {showDormPicker && <DormitoryPickerModal currentDorm={currentDorm} onSelect={(dorm) => { setCurrentDorm(dorm); setShowDormPicker(false); }} onClose={() => setShowDormPicker(false)} />}
     </MobileShell>
@@ -379,7 +505,26 @@ function CustomerHome({ search, setSearch, category, setCategory, foods, menu, f
     </section>
 
     <section className="discovery-section popular-section" id="popular" data-scroll-reveal><div className="section-heading"><div><span className="section-kicker">คัดมาให้แล้ว</span><h2>ร้านยอดนิยมใกล้คุณ</h2></div><a href="#popular">ดูร้านทั้งหมด <span>→</span></a></div>
-      <div className="food-grid">{foods.map((food, index) => <button className={`food-card editorial-card card-tone-${index + 1}`} data-scroll-reveal key={food.id} onClick={() => onStore(food)}><div className="shop-photo"><img src={food.photo} alt={`${food.name} ร้านอาหาร`} loading={index < 2 ? "eager" : "lazy"} /><span className="shop-status">เปิดอยู่</span><i>↗</i></div><div className="editorial-card-info"><small className="food-category">{food.category}</small><b>{food.name}</b><div className="food-meta"><span>★ {food.rating}</span><i /><span>{food.delivery}</span><strong>เริ่ม ฿{food.price}</strong></div><div className="shop-tag-row">{food.tags?.map((tag) => <small key={tag}>{tag}</small>)}</div></div></button>)}</div>
+      <div className="food-grid">
+        {foods.map((food, index) => (
+          <button className={`food-card editorial-card card-tone-${index + 1}`} data-scroll-reveal key={food.id} onClick={() => onStore(food)}>
+            <StoreCardVisual food={food} index={index} />
+            <div className="editorial-card-info">
+              <small className="food-category">{food.category}</small>
+              <b>{food.name}</b>
+              <div className="food-meta">
+                <span>★ {food.rating}</span>
+                <i />
+                <span>{food.delivery}</span>
+                <strong>เริ่ม ฿{food.price}</strong>
+              </div>
+              <div className="shop-tag-row">
+                {food.tags?.map((tag) => <small key={tag}>{tag}</small>)}
+              </div>
+            </div>
+          </button>
+        ))}
+      </div>
     </section>
 
     <section className="discovery-section menu-section" id="menu" data-scroll-reveal>
@@ -394,10 +539,75 @@ function CustomerHome({ search, setSearch, category, setCategory, foods, menu, f
   </div>;
 }
 
+function StoreCardVisual({ food, index }) {
+  const [hasError, setHasError] = useState(false);
+  const isValidPhoto = food.photo && (food.photo.startsWith("http://") || food.photo.startsWith("https://")) && !hasError;
+
+  if (isValidPhoto) {
+    return (
+      <div className="shop-photo">
+        <img
+          src={food.photo}
+          alt={`${food.name} ร้านอาหาร`}
+          loading={index < 2 ? "eager" : "lazy"}
+          onError={() => setHasError(true)}
+        />
+        <span className="shop-status">เปิดอยู่</span>
+        <i>↗</i>
+      </div>
+    );
+  }
+
+  return (
+    <div className="shop-photo shop-photo-placeholder">
+      <div className="placeholder-content">
+        <span className="placeholder-emoji">{food.emoji || "🍽️"}</span>
+        <b className="placeholder-store-title">{food.name}</b>
+        <span className="placeholder-status-tag">📷 รออัปโหลดรูปหน้าร้าน</span>
+      </div>
+      <span className="shop-status">เปิดอยู่</span>
+      <i>↗</i>
+    </div>
+  );
+}
+
+function StoreHeroVisual({ store }) {
+  const [hasError, setHasError] = useState(false);
+  const isValidPhoto = store.photo && (store.photo.startsWith("http://") || store.photo.startsWith("https://")) && !hasError;
+
+  if (isValidPhoto) {
+    return (
+      <div className="store-photo-large">
+        <img src={store.photo} alt={`${store.name} เมนูแนะนำ`} onError={() => setHasError(true)} />
+        <span className="store-open-pill">เปิดให้บริการ</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="store-photo-large store-photo-placeholder-banner">
+      <div className="hero-placeholder-inner">
+        <span className="hero-placeholder-emoji">{store.emoji || "🍽️"}</span>
+        <h3>{store.name}</h3>
+        <p>{store.category}</p>
+        <span className="hero-placeholder-tag">📷 ภาพถ่ายหน้าร้าน (รอร้านค้าอัปโหลด)</span>
+      </div>
+      <span className="store-open-pill">เปิดให้บริการ</span>
+    </div>
+  );
+}
+
 function CustomerStore({ store, onBack, onCustomize, onBasket, cartCount }) {
   return <div className="restaurant-detail">
     <TopBar title={store.name} subtitle={store.category} onBack={onBack} action={<button className="topbar-cart" onClick={onBasket}>🛒 {cartCount}</button>} />
-    <div className="store-hero"><div className="store-photo-large"><img src={store.photo} alt={`${store.name} เมนูแนะนำ`} /><span className="store-open-pill">เปิดให้บริการ</span></div><div className="store-info"><div><b>{store.name}</b><small>{store.category}</small></div><div className="store-meta-line"><span>★ {store.rating}</span><i /><span>{store.delivery}</span><i /><span>{store.fee}</span></div><div className="store-detail-tags">{store.tags?.map((tag) => <span key={tag}>{tag}</span>)}</div></div></div>
+    <div className="store-hero">
+      <StoreHeroVisual store={store} />
+      <div className="store-info">
+        <div><b>{store.name}</b><small>{store.category}</small></div>
+        <div className="store-meta-line"><span>★ {store.rating}</span><i /><span>{store.delivery}</span><i /><span>{store.fee}</span></div>
+        <div className="store-detail-tags">{store.tags?.map((tag) => <span key={tag}>{tag}</span>)}</div>
+      </div>
+    </div>
     <div className="restaurant-menu-heading"><div><small>ทำสดทุกจาน</small><b>เมนูของร้าน</b></div><span>{store.menu?.length || 0} เมนู</span></div>
     <div className="store-menu-grid">{store.menu?.map((item) => <article className="store-menu-item" key={item.id}><div className="store-menu-photo"><img src={item.image} alt={item.name} loading="lazy" /></div><div className="store-menu-item-info"><div><b>{item.name}</b><small>{item.description}</small></div><div className="store-menu-item-bottom"><strong>฿{item.price}</strong><button onClick={() => onCustomize(item, store)} aria-label={`ปรับแต่ง ${item.name}`}>＋</button></div><small className="customize-hint">ปรับแต่งเมนูได้</small></div></article>)}</div>
     <button className="primary-btn store-cart-cta" onClick={onBasket}>ดูตะกร้า <span>{cartCount} รายการ</span></button>
@@ -410,21 +620,179 @@ function CustomizationModal({ item, options, selected, setSelected, note, setNot
   return <div className="customize-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="customize-dialog" role="dialog" aria-modal="true" aria-labelledby="customize-title"><button className="customize-close" onClick={onClose} aria-label="ปิด">×</button><div className="customize-product"><img src={item.image} alt={item.name} /><div><small>ปรับแต่งเมนู</small><h2 id="customize-title">{item.name}</h2><span>฿{item.price}</span></div></div><div className="customize-section-heading"><b>เพิ่มความอร่อย</b><small>เลือกได้หลายรายการ</small></div><div className="customize-options">{options.map((option) => <label className="customize-option" key={option.id}><input type="checkbox" checked={selected.includes(option.id)} onChange={() => toggle(option.id)} /><span>{option.name}</span><b>+฿{option.price}</b></label>)}</div><label className="customize-note"><b>หมายเหตุถึงร้าน</b><textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="เช่น ไม่ใส่ผัก เผ็ดน้อย แยกน้ำซอส" maxLength={180} /><small>{note.length}/180</small></label><div className="customize-footer"><div className="qty customize-qty"><button onClick={() => setQty(Math.max(1, qty - 1))}>−</button><span>{qty}</span><button onClick={() => setQty(qty + 1)}>＋</button></div><button className="primary-btn" onClick={onConfirm}>เพิ่มลงตะกร้า · ฿{(item.price + addonsTotal) * qty}</button></div></section></div>;
 }
 
-function Basket({ cart, subtotal, deliveryFee, total, changeQty, onBack, onNext }) {
-  return <><TopBar title="My Cart" onBack={onBack} /><div className="cart-shop"><CartStoreThumb storeId={cart[0]?.storeId} /><div><b>{cart[0]?.storeName || "เลือกร้านค้า"}</b><small>Delivery · est. 34 mins</small></div></div>{cart.length ? cart.map((item) => <div className="cart-row" key={item.cartLineId || item.id}><div className="food-thumb cart-item-image"><img src={item.image} alt={item.name} /></div><div className="cart-row-info"><b>{item.name}</b>{item.selectedAddons?.length > 0 && <small>เพิ่ม: {item.selectedAddons.map((option) => option.name).join(", ")}</small>}{item.note && <small>หมายเหตุ: {item.note}</small>}<small>{item.price} ฿</small></div><div className="qty"><button onClick={() => changeQty(item.cartLineId || item.id,-1)}>−</button><span>{item.qty}</span><button onClick={() => changeQty(item.cartLineId || item.id,1)}>＋</button></div></div>) : <EmptyState title="Your basket is empty" text="กลับไปที่ร้านเพื่อเลือกเมนู" />}<Summary subtotal={subtotal} delivery={deliveryFee} total={total} /><button className="primary-btn" disabled={!cart.length} onClick={onNext}>Update Basket →</button></>;
+function Basket({ cart, subtotal, deliveryFee, total, changeQty, onBack, onNext, isLoggedIn, onRequireLogin }) {
+  return (
+    <>
+      <TopBar title="My Cart" onBack={onBack} />
+      {!isLoggedIn && (
+        <div className="auth-checkout-notice">
+          <div className="auth-checkout-notice-text">
+            <b>🔒 กรุณาเข้าสู่ระบบก่อนสั่งซื้อ</b>
+            <small>ระบบจำเป็นต้องใช้ข้อมูลผู้ใช้งานในการจัดส่งอาหาร</small>
+          </div>
+          <button className="auth-checkout-notice-btn" onClick={onRequireLogin}>
+            เข้าสู่ระบบ
+          </button>
+        </div>
+      )}
+      <div className="cart-shop">
+        <CartStoreThumb storeId={cart[0]?.storeId} />
+        <div>
+          <b>{cart[0]?.storeName || "เลือกร้านค้า"}</b>
+          <small>Delivery · est. 34 mins</small>
+        </div>
+      </div>
+      {cart.length ? (
+        cart.map((item) => (
+          <div className="cart-row" key={item.cartLineId || item.id}>
+            <div className="food-thumb cart-item-image">
+              <img src={item.image} alt={item.name} />
+            </div>
+            <div className="cart-row-info">
+              <b>{item.name}</b>
+              {item.selectedAddons?.length > 0 && (
+                <small>เพิ่ม: {item.selectedAddons.map((option) => option.name).join(", ")}</small>
+              )}
+              {item.note && <small>หมายเหตุ: {item.note}</small>}
+              <small>{item.price} ฿</small>
+            </div>
+            <div className="qty">
+              <button onClick={() => changeQty(item.cartLineId || item.id, -1)}>−</button>
+              <span>{item.qty}</span>
+              <button onClick={() => changeQty(item.cartLineId || item.id, 1)}>＋</button>
+            </div>
+          </div>
+        ))
+      ) : (
+        <EmptyState title="Your basket is empty" text="กลับไปที่ร้านเพื่อเลือกเมนู" />
+      )}
+      <Summary subtotal={subtotal} delivery={deliveryFee} total={total} />
+      <button className="primary-btn" disabled={!cart.length} onClick={onNext}>
+        ดำเนินการต่อ →
+      </button>
+    </>
+  );
 }
 
-function UpdateBasket({ cart, total, savedPlace, setSavedPlace, changeQty, onBack, onNext }) {
-  return <><TopBar title="Update Basket" onBack={onBack} action={<b className="orange-text">{total} ฿</b>} /><div className="order-card"><div className="cart-shop"><CartStoreThumb storeId={cart[0]?.storeId} /><div><b>{cart[0]?.storeName || "เลือกร้านค้า"}</b><small>Delivery · est. 34 mins</small></div></div>{cart.map((item) => <div className="simple-line" key={item.cartLineId || item.id}><div><span>{item.name}</span>{item.selectedAddons?.length > 0 && <small className="order-custom-detail"> + {item.selectedAddons.map((option) => option.name).join(", ")}</small>}{item.note && <small className="order-custom-detail">หมายเหตุ: {item.note}</small>}</div><div className="qty"><button onClick={() => changeQty(item.cartLineId || item.id,-1)}>−</button><span>{item.qty}</span><button onClick={() => changeQty(item.cartLineId || item.id,1)}>＋</button></div></div>)}</div><label className="check-line"><input type="checkbox" checked={savedPlace} onChange={(e) => setSavedPlace(e.target.checked)} /> Save my place</label><button className="primary-btn" onClick={onNext}>Update Basket → {total} ฿</button></>;
+function UpdateBasket({ cart, total, savedPlace, setSavedPlace, changeQty, onBack, onNext, isLoggedIn, onRequireLogin }) {
+  return (
+    <>
+      <TopBar title="Update Basket" onBack={onBack} action={<b className="orange-text">{total} ฿</b>} />
+      {!isLoggedIn && (
+        <div className="auth-checkout-notice">
+          <div className="auth-checkout-notice-text">
+            <b>🔒 กรุณาเข้าสู่ระบบก่อนสั่งซื้อ</b>
+            <small>ระบบจำเป็นต้องใช้ข้อมูลผู้ใช้งานในการจัดส่งอาหาร</small>
+          </div>
+          <button className="auth-checkout-notice-btn" onClick={onRequireLogin}>
+            เข้าสู่ระบบ
+          </button>
+        </div>
+      )}
+      <div className="order-card">
+        <div className="cart-shop">
+          <CartStoreThumb storeId={cart[0]?.storeId} />
+          <div>
+            <b>{cart[0]?.storeName || "เลือกร้านค้า"}</b>
+            <small>Delivery · est. 34 mins</small>
+          </div>
+        </div>
+        {cart.map((item) => (
+          <div className="simple-line" key={item.cartLineId || item.id}>
+            <div>
+              <span>{item.name}</span>
+              {item.selectedAddons?.length > 0 && (
+                <small className="order-custom-detail"> + {item.selectedAddons.map((option) => option.name).join(", ")}</small>
+              )}
+              {item.note && <small className="order-custom-detail">หมายเหตุ: {item.note}</small>}
+            </div>
+            <div className="qty">
+              <button onClick={() => changeQty(item.cartLineId || item.id, -1)}>−</button>
+              <span>{item.qty}</span>
+              <button onClick={() => changeQty(item.cartLineId || item.id, 1)}>＋</button>
+            </div>
+          </div>
+        ))}
+      </div>
+      <label className="check-line">
+        <input type="checkbox" checked={savedPlace} onChange={(e) => setSavedPlace(e.target.checked)} /> Save my place
+      </label>
+      <button className="primary-btn" onClick={onNext}>
+        ยืนยันรายการ → {total} ฿
+      </button>
+    </>
+  );
 }
 
-function PlaceOrder({ cart, subtotal, deliveryFee, total, onBack, onPlace }) {
-  return <><TopBar title="Order Summary" onBack={onBack} /><div className="summary-card-big"><div className="cart-shop"><CartStoreThumb storeId={cart[0]?.storeId} /><div><b>{cart[0]?.storeName || "เลือกร้านค้า"}</b><small>Delivery · 34 mins</small></div></div>{cart.map((item) => <div className="summary-item" key={item.cartLineId || item.id}><span>{item.name} x{item.qty}{item.selectedAddons?.length > 0 && <small className="order-custom-detail"> + {item.selectedAddons.map((option) => option.name).join(", ")}</small>}{item.note && <small className="order-custom-detail">หมายเหตุ: {item.note}</small>}</span><b>{item.price * item.qty} ฿</b></div>)}<Summary subtotal={subtotal} delivery={deliveryFee} total={total} /></div><div className="payment-card"><b>Payment method</b><div>◉ PromptPay QR Code <span>›</span></div></div><button className="primary-btn" onClick={onPlace}>Place order <span>· {total} ฿</span></button></>;
+function PlaceOrder({ cart, subtotal, deliveryFee, total, onBack, onPlace, isLoggedIn, onRequireLogin }) {
+  return (
+    <>
+      <TopBar title="Order Summary" onBack={onBack} />
+      {!isLoggedIn && (
+        <div className="auth-checkout-notice">
+          <div className="auth-checkout-notice-text">
+            <b>🔒 กรุณาเข้าสู่ระบบก่อนสั่งซื้อ</b>
+            <small>ระบบจำเป็นต้องใช้ข้อมูลผู้ใช้งานในการจัดส่งอาหาร</small>
+          </div>
+          <button className="auth-checkout-notice-btn" onClick={onRequireLogin}>
+            เข้าสู่ระบบ
+          </button>
+        </div>
+      )}
+      <div className="summary-card-big">
+        <div className="cart-shop">
+          <CartStoreThumb storeId={cart[0]?.storeId} />
+          <div>
+            <b>{cart[0]?.storeName || "เลือกร้านค้า"}</b>
+            <small>Delivery · 34 mins</small>
+          </div>
+        </div>
+        {cart.map((item) => (
+          <div className="summary-item" key={item.cartLineId || item.id}>
+            <span>
+              {item.name} x{item.qty}
+              {item.selectedAddons?.length > 0 && (
+                <small className="order-custom-detail"> + {item.selectedAddons.map((option) => option.name).join(", ")}</small>
+              )}
+              {item.note && <small className="order-custom-detail">หมายเหตุ: {item.note}</small>}
+            </span>
+            <b>{item.price * item.qty} ฿</b>
+          </div>
+        ))}
+        <Summary subtotal={subtotal} delivery={deliveryFee} total={total} />
+      </div>
+      <div className="payment-card">
+        <b>Payment method</b>
+        <div>◉ PromptPay QR Code <span>›</span></div>
+      </div>
+      <button className="primary-btn" onClick={onPlace}>
+        {isLoggedIn ? `ยืนยันการสั่งซื้อ · ${total} ฿` : `เข้าสู่ระบบเพื่อสั่งซื้อ · ${total} ฿`}
+      </button>
+    </>
+  );
 }
 
 function CartStoreThumb({ storeId }) {
   const store = customerFoods.find((item) => item.id === storeId);
-  return <div className="food-thumb cart-store-image"><img src={store?.photo || "/store-kitchen.webp"} alt={store?.name || "ร้านอาหาร"} /></div>;
+  const hasPhoto = store?.photo && (store.photo.startsWith("http://") || store.photo.startsWith("https://"));
+  if (hasPhoto) {
+    return <div className="food-thumb cart-store-image"><img src={store.photo} alt={store?.name || "ร้านอาหาร"} /></div>;
+  }
+  return (
+    <div
+      className="food-thumb cart-store-image"
+      style={{
+        display: "grid",
+        placeItems: "center",
+        fontSize: "20px",
+        background: "linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%)",
+        border: "1px solid #fed7aa",
+        borderRadius: "10px"
+      }}
+    >
+      {store?.emoji || "🍱"}
+    </div>
+  );
 }
 
 function Summary({ subtotal, delivery, total }) { return <div className="summary"><div><span>Subtotal</span><b>{subtotal} ฿</b></div><div><span>Delivery fee</span><b>{delivery} ฿</b></div><hr/><div className="total"><span>Total</span><strong>{total} ฿</strong></div></div>; }
@@ -491,7 +859,7 @@ function CustomerChat({ storeName, messages, value, setValue, onSend, onBack }) 
   return <><div className="chat-top"><button onClick={onBack}>‹</button><div><b>{storeName || "ครัวหลังมอ"}</b><small>online</small></div><span>☎</span></div><div className="chat-messages">{messages.map((m,i)=><div className={`chat-bubble ${m.from === "me" ? "me" : "store"}`} key={i}>{m.text}</div>)}</div><form className="chat-compose" onSubmit={onSend}><input value={value} onChange={(e)=>setValue(e.target.value)} placeholder="เขียนข้อความ..."/><button>➤</button></form></>;
 }
 
-function CustomerAuth({ mode, onBack, onSuccess, onSignUp, onLogin }) {
+function CustomerAuth({ mode, onBack, onSuccess, onSignUp, onLogin, isOrdering }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [email, setEmail] = useState("");
@@ -518,61 +886,137 @@ function CustomerAuth({ mode, onBack, onSuccess, onSignUp, onLogin }) {
         onSuccess(res.user || { username, phone });
       }
     } catch (err) {
-      setError(err.message || "การเข้าสู่ระบบไม่สำเร็จ");
+      setError(err.message || "การเข้าสู่ระบบไม่สำเร็จ ตรวจสอบชื่อผู้ใช้และรหัสผ่าน");
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="auth-page">
-      <button className="auth-back" onClick={onBack}>‹</button>
-      <div className="auth-art">🍕 🍟 🥤 🍗</div>
-      <form className="auth-panel" onSubmit={handleSubmit}>
-        <h2>{mode === "login" ? "Sign in เข้าสู่ระบบ" : "Sign up สมัครสมาชิก"}</h2>
-        {error && <div style={{ color: "#e53e3e", fontSize: "13px", padding: "6px", background: "#fed7d7", borderRadius: "6px", marginBottom: "8px" }}>{error}</div>}
-        
-        <input 
-          placeholder={mode === "login" ? "Username หรือ Email" : "Username (ภาษาอังกฤษและตัวเลข)"} 
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          required
-        />
+    <div className="modern-auth-container">
+      <button className="modern-auth-back-btn" onClick={onBack}>
+        ← กลับหน้าร้าน
+      </button>
 
-        {mode === "signup" && (
-          <>
-            <input 
-              placeholder="Email (เช่น user@example.com)" 
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-            <input 
-              placeholder="เบอร์โทรศัพท์ (10 หลัก เช่น 0812345678)" 
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-            />
-          </>
+      <div className="modern-auth-card">
+        {isOrdering && (
+          <div className="auth-notice-banner">
+            🛒 <b>จำเป็นต้องเข้าสู่ระบบก่อน</b> เพื่อระบุข้อมูลผู้สั่งซื้อและติดตามสถานะจัดส่งถึงหอพักของคุณ
+          </div>
         )}
 
-        <input 
-          placeholder="Password (อย่างน้อย 6 ตัวอักษร)" 
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
+        <div className="modern-auth-header">
+          <div className="brand-badge-icon">🍲 Behind NB</div>
+          <h2>{mode === "login" ? "เข้าสู่ระบบ (Sign In)" : "สมัครสมาชิกใหม่ (Sign Up)"}</h2>
+          <p>สั่งอาหารเดลิเวอรีหอพักรอบมหาวิทยาลัย มจพ.</p>
+        </div>
 
-        <button className="primary-btn" type="submit" disabled={loading}>
-          {loading ? "กำลังดำเนินการ..." : (mode === "login" ? "Sign in เข้าสู่ระบบ" : "Sign up สมัครสมาชิก")}
-        </button>
-        <small>{mode === "login" ? "ยังไม่มีบัญชี?" : "มีบัญชีอยู่แล้ว?"}</small>
-        <button type="button" className="text-link" onClick={mode === "login" ? onSignUp : onLogin}>
-          {mode === "login" ? "สร้างบัญชีใหม่ (Sign up)" : "เข้าสู่ระบบ (Sign in)"}
-        </button>
-      </form>
-      <div className="social-row"><button type="button">G Google</button><button type="button">● Line</button></div>
+        {error && <div className="modern-auth-error">⚠️ {error}</div>}
+
+        <form className="modern-auth-form" onSubmit={handleSubmit}>
+          <div className="auth-field-group">
+            <label>ชื่อผู้ใช้งาน (Username หรือ Email)</label>
+            <input
+              type="text"
+              placeholder="เช่น student หรือ student@kmutnb.ac.th"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              required
+              autoComplete="username"
+            />
+          </div>
+
+          {mode === "signup" && (
+            <>
+              <div className="auth-field-group">
+                <label>อีเมล (Email)</label>
+                <input
+                  type="email"
+                  placeholder="เช่น student@kmutnb.ac.th"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  autoComplete="email"
+                />
+              </div>
+              <div className="auth-field-group">
+                <label>เบอร์โทรศัพท์ (สำหรับผู้จัดส่งติดต่อ)</label>
+                <input
+                  type="tel"
+                  placeholder="เช่น 0812345678"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  required
+                />
+              </div>
+            </>
+          )}
+
+          <div className="auth-field-group">
+            <label>รหัสผ่าน (Password)</label>
+            <input
+              type="password"
+              placeholder="รหัสผ่านอย่างน้อย 6 ตัวอักษร"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              autoComplete={mode === "login" ? "current-password" : "new-password"}
+            />
+          </div>
+
+          <button className="modern-auth-submit-btn" type="submit" disabled={loading}>
+            {loading ? "กำลังดำเนินการ..." : (mode === "login" ? "เข้าสู่ระบบ (Sign In)" : "สร้างบัญชีใหม่ (Sign Up)")}
+          </button>
+
+          {mode === "login" && (
+            <button
+              type="button"
+              className="auth-quick-fill-btn"
+              onClick={() => {
+                setUsername("student");
+                setPassword("password123");
+              }}
+            >
+              ⚡ ใช้บัญชีทดสอบ: student / password123
+            </button>
+          )}
+
+          <div className="modern-auth-toggle-row">
+            <span>{mode === "login" ? "ยังไม่มีบัญชีใช่ไหม?" : "มีบัญชีอยู่แล้ว?"}</span>
+            <button type="button" onClick={mode === "login" ? onSignUp : onLogin}>
+              {mode === "login" ? "สมัครสมาชิกใหม่ที่นี่" : "เข้าสู่ระบบที่นี่"}
+            </button>
+          </div>
+        </form>
+
+        <div className="social-divider">
+          <span>หรือเข้าสู่ระบบด้วย</span>
+        </div>
+
+        <div className="modern-social-row">
+          <button
+            type="button"
+            className="social-btn"
+            onClick={() => alert("ระบบเข้าสู่ระบบด้วย Google อยู่ระหว่างการเชื่อมต่อใน Phase 3")}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24">
+              <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.65v3h3.88c2.27-2.09 3.66-5.17 3.66-9.09z"/>
+              <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.27v3.09C3.25 21.36 7.33 24 12 24z"/>
+              <path fill="#FBBC05" d="M5.28 14.32c-.25-.72-.38-1.49-.38-2.32s.13-1.6.38-2.32V6.59H1.27C.46 8.2.0 10.04.0 12s.46 3.8 1.27 5.41l4.01-3.09z"/>
+              <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.25 2.64 1.27 6.59l4.01 3.09c.95-2.83 3.6-4.93 6.72-4.93z"/>
+            </svg>
+            Google
+          </button>
+          <button
+            type="button"
+            className="social-btn"
+            onClick={() => alert("ระบบเข้าสู่ระบบด้วย LINE อยู่ระหว่างการเชื่อมต่อใน Phase 3")}
+          >
+            <span style={{ color: "#06C755", fontSize: "16px", fontWeight: "900" }}>●</span>
+            LINE
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
