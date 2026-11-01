@@ -180,21 +180,22 @@ module.exports = (io) => {
                 io.to(roomName).emit('new_message', msgPayload);
 
                 try {
+                    const senderRole = socket.user?.role || (isMerchantSender ? (senderSubRole === 'RIDER' ? 'RIDER' : 'MERCHANT') : 'CUSTOMER');
                     knex('ORDERS').where('id', orderId).first().then(orderRecord => {
                         if (orderRecord) {
-                            if (orderRecord.merchant_id && socket.user?.role !== 'MERCHANT') {
-                                io.to(`merchant_${orderRecord.merchant_id}`).emit('NEW_CHAT_MESSAGE', msgPayload);
+                            if (orderRecord.merchant_id && senderRole !== 'MERCHANT') {
+                                io.to(merchant_).emit('NEW_CHAT_MESSAGE', msgPayload);
                             }
-                            if (orderRecord.customer_id && socket.user?.role !== 'CUSTOMER') {
-                                io.to(`customer_${orderRecord.customer_id}`).emit('NEW_CHAT_MESSAGE', msgPayload);
+                            if (orderRecord.customer_id && senderRole !== 'CUSTOMER') {
+                                io.to(customer_).emit('NEW_CHAT_MESSAGE', msgPayload);
                             }
-                            if (orderRecord.rider_id && socket.user?.role !== 'RIDER') {
-                                io.to(`rider_${orderRecord.rider_id}`).emit('NEW_CHAT_MESSAGE', msgPayload);
+                            if (orderRecord.rider_id && senderRole !== 'RIDER') {
+                                io.to(
+ider_).emit('NEW_CHAT_MESSAGE', msgPayload);
                             }
                         }
                     }).catch(() => {});
                 } catch (e) {}
-
             } catch (error) {
                 console.error('❌ ส่งข้อความล้มเหลว:', error);
                 socket.emit('error', { message: 'Failed to send message' });

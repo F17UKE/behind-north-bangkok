@@ -130,28 +130,21 @@ export default function RiderPage() {
             initSocket(riderData);
           }}
         />
-  {activeChatOrder && (
-        <RiderChatModal
-          order={activeChatOrder}
-          onClose={() => setActiveChatOrder(null)}
-          onRead={(ordId) => {
-            setUnreadCounts(prev => ({ ...prev, [ordId]: 0 }));
-          }}
-        />
-      )}
-    </MobileShell>
+      </MobileShell>
     );
   }
 
   const activeOrders = orders.filter((o) => ["READY_FOR_DELIVERY", "IN_DELIVERY"].includes(o.status));
-  // กรองเฉพาะออเดอร์ที่จัดส่งสำเร็จแล้วในวันนี้เท่านั้น
+  // กรองเฉพาะออเดอร์ที่จัดส่งสำเร็จแล้วในวันนี้ (หรือภายใน 24 ชม.)
   const historyOrders = orders.filter((o) => {
     if (o.status !== "COMPLETED") return false;
     const targetDate = o.updated_at || o.created_at;
     if (!targetDate) return true;
     const d = new Date(targetDate);
     const now = new Date();
-    return d.toDateString() === now.toDateString();
+    const isToday = d.toDateString() === now.toDateString();
+    const isWithin24Hours = (now.getTime() - d.getTime()) < (24 * 60 * 60 * 1000);
+    return isToday || isWithin24Hours;
   });
 
   return (
@@ -444,6 +437,16 @@ export default function RiderPage() {
           { key: "delivery", label: `งานส่ง (${activeOrders.length})`, icon: "🛵" }
         ]}
       />
+
+      {activeChatOrder && (
+        <RiderChatModal
+          order={activeChatOrder}
+          onClose={() => setActiveChatOrder(null)}
+          onRead={(ordId) => {
+            setUnreadCounts(prev => ({ ...prev, [ordId]: 0 }));
+          }}
+        />
+      )}
     </MobileShell>
   );
 }

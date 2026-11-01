@@ -37,10 +37,17 @@ const createOrder = async (req, res) => {
 
       // ส่งสัญญาณแจ้งเตือนไปยังร้านค้าและ KDS
       io.to(`merchant_${newOrder.merchant_id}`).emit('NEW_ORDER_RECEIVED', {
-        order: enrichedOrder
+        order: enrichedOrder,
+        merchant_id: Number(newOrder.merchant_id)
       });
       io.to(`merchant_${newOrder.merchant_id}_kds`).emit('NEW_ORDER_RECEIVED', {
-        order: enrichedOrder
+        order: enrichedOrder,
+        merchant_id: Number(newOrder.merchant_id)
+      });
+      // บรอดแคสต์ Global Fallback เพื่อความแม่นยำ 100% แม้ Socket Room จะหลุด
+      io.emit('NEW_ORDER_RECEIVED', {
+        order: enrichedOrder,
+        merchant_id: Number(newOrder.merchant_id)
       });
       io.to(`customer_${newOrder.customer_id}`).emit('ORDER_STATUS_UPDATED', {
         order_id: Number(newOrder.id),

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BottomNav, MobileShell, SearchBar, StatusPill, TopBar, EmptyState } from "../../components/AppShell";
 import { merchantOrdersSeed, statusLabel } from "../../data/mockData";
 import { orderApi } from "../../api/orderApi";
@@ -24,7 +24,22 @@ export default function MerchantPage() {
   const [currentMerchant, setCurrentMerchant] = useState(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [unreadChatCount, setUnreadChatCount] = useState(0);
+  const [unreadByOrder, setUnreadByOrder] = useState({});
   const [selectedChatOrder, setSelectedChatOrder] = useState(null);
+  const prevOrderIds = useRef(new Set());
+
+  async function loadUnreadCounts() {
+    if (!authApi.isLoggedIn("MERCHANT")) return;
+    try {
+      const res = await orderApi.getUnreadCount("MERCHANT");
+      if (res?.byOrder) {
+        setUnreadByOrder(res.byOrder);
+      }
+      if (typeof res?.totalUnread === "number") {
+        setUnreadChatCount(res.totalUnread);
+      }
+    } catch (e) {}
+  }
 
   useEffect(() => {
     const logged = authApi.isLoggedIn("MERCHANT");
@@ -33,15 +48,17 @@ export default function MerchantPage() {
       const merchantUser = authApi.getCurrentUser("MERCHANT");
       setCurrentMerchant(merchantUser);
       loadMerchantOrders();
+      loadUnreadCounts();
       initSocket(merchantUser);
     }
   }, []);
 
-  // Polling fallback ทุกๆ 4 วินาที สำหรับร้านค้า เพื่อให้ออเดอร์อัปเดตสดเสมอแม้ Socket ขัดข้อง
+  // Polling fallback ทุกๆ 4 วินาที สำหรับร้านค้า เพื่อให้ออเดอร์และแชทอัปเดตสดเสมอแม้ Socket ขัดข้อง
   useEffect(() => {
     if (!isLoggedIn) return;
     const interval = setInterval(() => {
       loadMerchantOrders();
+      loadUnreadCounts();
     }, 4000);
     return () => clearInterval(interval);
   }, [isLoggedIn]);
@@ -50,13 +67,23 @@ export default function MerchantPage() {
     const socket = getSocket("MERCHANT");
     if (!socket) return;
 
-    if (merchantUser?.id) {
-      socket.emit("join_merchant_room", { merchant_id: merchantUser.id });
-    }
+    const rejoinRooms = () => {
+      if (merchantUser?.id) {
+        socket.emit("join_merchant_room", { merchant_id: merchantUser.id });
+        socket.emit("join_kds_room", { merchant_id: merchantUser.id });
+      }
+    };
+
+    rejoinRooms();
+    socket.on("connect", rejoinRooms);
 
     // 1. รับออเดอร์ใหม่แบบ Real-time พร้อมเสียงกระดิ่ง และแบนเนอร์เด้งแจ้งเตือน
     const handleNewOrder = (payload) => {
       console.log("🔔 [Realtime] New order received:", payload);
+      // ตรวจสอบว่าเป็นออเดอร์ของร้านตนเอง
+      if (payload.merchant_id && Number(payload.merchant_id) !== Number(merchantUser?.id)) {
+        return;
+      }
       playOrderChime();
 
       const incoming = payload?.order;
@@ -106,7 +133,6 @@ export default function MerchantPage() {
         return isMatch ? { ...o, status } : o;
       }));
 
-      // ดึงรายการออเดอร์ล่าสุดจากฐานข้อมูลทันทีเพื่อให้สถานะและข้อมูลครบถ้วน
       loadMerchantOrders();
 
       const displayCode = payload.order_code ? (payload.order_code.startsWith("#") ? payload.order_code : `#${payload.order_code}`) : `#${order_id}`;
@@ -115,12 +141,35 @@ export default function MerchantPage() {
       setTimeout(() => setStatusNotice(""), 3500);
     };
 
+    // 3. รับข้อความแชทใหม่แบบ Real-time
+    const handleNewChat = (payload) => {
+      console.log("💬 [Merchant Socket] NEW_CHAT_MESSAGE:", payload);
+      // หากร้านค้าเป็นผู้ส่งเอง ไม่ต้องแจ้งเตือน
+      if (payload.is_merchant_sender && (payload.sender_sub_role === 'STORE' || payload.role === 'STORE')) {
+        return;
+      }
+      playOrderChime();
+      const ordId = Number(payload.order_id || payload.orderId);
+      if (ordId) {
+        setUnreadByOrder(prev => ({ ...prev, [ordId]: (prev[ordId] || 0) + 1 }));
+      }
+      setUnreadChatCount(c => c + 1);
+
+      const senderTitle = payload.sender_sub_role === "RIDER" ? "ไรเดอร์" : "ลูกค้า";
+      const messagePreview = payload.content_text || payload.contentText || "";
+      setStatusNotice(`💬 มีข้อความใหม่จาก${senderTitle}: ${messagePreview}`);
+      setTimeout(() => setStatusNotice(""), 4500);
+    };
+
     socket.on("NEW_ORDER_RECEIVED", handleNewOrder);
     socket.on("ORDER_STATUS_UPDATED", handleStatusUpdate);
+    socket.on("NEW_CHAT_MESSAGE", handleNewChat);
 
     return () => {
+      socket.off("connect", rejoinRooms);
       socket.off("NEW_ORDER_RECEIVED", handleNewOrder);
       socket.off("ORDER_STATUS_UPDATED", handleStatusUpdate);
+      socket.off("NEW_CHAT_MESSAGE", handleNewChat);
     };
   }
 
@@ -169,6 +218,23 @@ export default function MerchantPage() {
             time: o.created_at ? new Date(o.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "เมื่อสักครู่"
           };
         });
+        // ตรวจสอบว่ามีออเดอร์ PENDING_ACCEPT ใหม่เข้ามาหรือไม่เพื่อเล่นเสียงแจ้งเตือน
+        const currentPending = mapped.filter(o => o.status === "PENDING_ACCEPT");
+        if (prevOrderIds.current.size > 0) {
+          const freshOrders = currentPending.filter(o => !prevOrderIds.current.has(o.rawId));
+          if (freshOrders.length > 0) {
+            playOrderChime();
+            const newest = freshOrders[0];
+            setNewOrderAlert({
+              id: newest.id,
+              rawId: newest.rawId,
+              customer: newest.customer,
+              dorm: newest.roomNumber || "จัดส่งถึงหอพัก",
+              total: newest.total
+            });
+          }
+        }
+        prevOrderIds.current = new Set(mapped.map(o => o.rawId));
         setOrders(mapped);
       }
     } catch (err) {
@@ -182,7 +248,8 @@ export default function MerchantPage() {
       if (!q.includes(query.toLowerCase())) return false;
       if (orderFilter === "pending") return ["PENDING_ACCEPT", "PENDING_PAYMENT"].includes(o.status);
       if (orderFilter === "preparing") return o.status === "PREPARING";
-      if (orderFilter === "done") return ["READY_FOR_DELIVERY", "IN_DELIVERY", "COMPLETED"].includes(o.status);
+      if (orderFilter === "ready") return o.status === "READY_FOR_DELIVERY";
+      if (orderFilter === "completed") return ["IN_DELIVERY", "COMPLETED"].includes(o.status);
       return true;
     })
     .sort((a, b) => Number(a.rawId || 0) - Number(b.rawId || 0)), // มาก่อนอยู่บน (FIFO)
@@ -366,14 +433,19 @@ export default function MerchantPage() {
         {screen === "orders" && (
           <MerchantOrders 
             orders={filteredOrders} 
+            allOrders={orders}
             filter={orderFilter} 
             setFilter={setOrderFilter} 
             query={query} 
             setQuery={setQuery} 
             onBack={() => setScreen("home")} 
             updateOrder={updateOrder} 
+            unreadByOrder={unreadByOrder}
             onOpenChat={(ord) => {
               setSelectedChatOrder(ord);
+              if (ord?.rawId) {
+                setUnreadByOrder(prev => ({ ...prev, [ord.rawId]: 0 }));
+              }
               setScreen("chat");
             }}
           />
@@ -536,23 +608,34 @@ function MerchantHome({ orders, go, query, setQuery, merchant, onLogout }) {
   );
 }
 
-function MerchantOrders({ orders, filter, setFilter, query, setQuery, onBack, updateOrder, onOpenChat }) {
+function MerchantOrders({ orders, allOrders = [], filter, setFilter, query, setQuery, onBack, updateOrder, onOpenChat, unreadByOrder = {} }) {
+  const counts = {
+    all: allOrders.length,
+    pending: allOrders.filter(o => ["PENDING_ACCEPT", "PENDING_PAYMENT"].includes(o.status)).length,
+    preparing: allOrders.filter(o => o.status === "PREPARING").length,
+    ready: allOrders.filter(o => o.status === "READY_FOR_DELIVERY").length,
+    completed: allOrders.filter(o => ["IN_DELIVERY", "COMPLETED"].includes(o.status)).length
+  };
+
   return (
     <>
       <TopBar title="จัดการออเดอร์" subtitle="Real-time Order Management" onBack={onBack} />
       <SearchBar value={query} onChange={setQuery} placeholder="ค้นหาเลขออเดอร์ หรือลูกค้า..." />
       <div className="filter-scroll merchant-filters">
         <button className={filter === "all" ? "active" : ""} onClick={() => setFilter("all")}>
-          ทั้งหมด ({orders.length})
+          ทั้งหมด ({counts.all})
         </button>
         <button className={filter === "pending" ? "active" : ""} onClick={() => setFilter("pending")}>
-          รอรับ/รอชำระ
+          รอรับ/รอชำระ ({counts.pending})
         </button>
         <button className={filter === "preparing" ? "active" : ""} onClick={() => setFilter("preparing")}>
-          กำลังทำ
+          กำลังทำ ({counts.preparing})
         </button>
-        <button className={filter === "done" ? "active" : ""} onClick={() => setFilter("done")}>
-          เสร็จแล้ว/พร้อมส่ง
+        <button className={filter === "ready" ? "active" : ""} onClick={() => setFilter("ready")}>
+          พร้อมจัดส่ง ({counts.ready})
+        </button>
+        <button className={filter === "completed" ? "active" : ""} onClick={() => setFilter("completed")}>
+          จัดส่งสำเร็จ ({counts.completed})
         </button>
       </div>
 
@@ -586,7 +669,41 @@ function MerchantOrders({ orders, filter, setFilter, query, setQuery, onBack, up
               <StatusPill tone={["PENDING_ACCEPT", "PENDING_PAYMENT", "PAID"].includes(o.status) ? "orange" : o.status === "PREPARING" ? "yellow" : ["READY_FOR_DELIVERY", "IN_DELIVERY", "COMPLETED"].includes(o.status) ? "green" : "red"}>
                 {statusLabel[o.status] || o.status}
               </StatusPill>
-              <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+              <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+                <button
+                  type="button"
+                  onClick={() => onOpenChat && onOpenChat(o)}
+                  style={{
+                    position: "relative",
+                    background: (unreadByOrder[o.rawId] || unreadByOrder[o.id] || 0) > 0 ? "#ffedd5" : "#f1f5f9",
+                    color: (unreadByOrder[o.rawId] || unreadByOrder[o.id] || 0) > 0 ? "#ea580c" : "#334155",
+                    border: (unreadByOrder[o.rawId] || unreadByOrder[o.id] || 0) > 0 ? "1.5px solid #f97316" : "1px solid #cbd5e1",
+                    borderRadius: "8px",
+                    padding: "6px 10px",
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "4px"
+                  }}
+                >
+                  💬 แชท
+                  {(unreadByOrder[o.rawId] || unreadByOrder[o.id] || 0) > 0 && (
+                    <span
+                      style={{
+                        background: "#ea580c",
+                        color: "white",
+                        borderRadius: "10px",
+                        padding: "1px 5px",
+                        fontSize: "10px",
+                        fontWeight: 800
+                      }}
+                    >
+                      {unreadByOrder[o.rawId] || unreadByOrder[o.id]}
+                    </span>
+                  )}
+                </button>
                 {o.status === "PENDING_ACCEPT" && (
                   <>
                     <button className="accept-button" onClick={() => updateOrder(o.id, "PENDING_PAYMENT")}>
@@ -607,22 +724,7 @@ function MerchantOrders({ orders, filter, setFilter, query, setQuery, onBack, up
                     >
                       ✕ ปฏิเสธ
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => onOpenChat && onOpenChat(o)}
-                      style={{
-                        background: "#f1f5f9",
-                        color: "#334155",
-                        border: "1px solid #cbd5e1",
-                        borderRadius: "8px",
-                        padding: "6px 10px",
-                        fontSize: "12px",
-                        fontWeight: 700,
-                        cursor: "pointer"
-                      }}
-                    >
-                      💬 แชท
-                    </button>
+
                   </>
                 )}
                 {o.status === "PENDING_PAYMENT" && (
@@ -1714,7 +1816,6 @@ function MerchantMenus({ merchant, onBack }) {
   const [imageUrl, setImageUrl] = useState("");
   const [uploadingImage, setUploadingImage] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [unreadChatCount, setUnreadChatCount] = useState(0);
   const [notice, setNotice] = useState("");
 
   // Edit Menu State

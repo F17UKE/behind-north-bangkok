@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { BottomNav, MobileShell, SearchBar, TopBar, EmptyState } from "../../components/AppShell";
 import { customerFoods, initialOrders, statusLabel, dormitories, sois } from "../../data/mockData";
@@ -88,6 +88,13 @@ export default function CustomerPage() {
   const [unreadChatCount, setUnreadChatCount] = useState(0);
 
   const [pendingReturnScreen, setPendingReturnScreen] = useState(null);
+  const screenRef = useRef(screen);
+  useEffect(() => {
+    screenRef.current = screen;
+    if (screen === "chat") {
+      setUnreadChatCount(0);
+    }
+  }, [screen]);
 
   // 1. ตรวจสอบการล็อกอินและโหลดข้อมูลที่อยู่ / ร้านค้าเมื่อเปิดหน้า
   useEffect(() => {
@@ -554,7 +561,11 @@ export default function CustomerPage() {
     const handleNewChat = (payload) => {
       console.log("💬 [Customer Socket] NEW_CHAT_MESSAGE:", payload);
       // ตรวจสอบว่าไม่ใช่ข้อความที่ตนเอง (Customer) เป็นคนส่ง
-      if (!payload.is_merchant_sender && (payload.role === 'CUSTOMER' || !payload.sender_sub_role)) {
+      if (!payload.is_merchant_sender || payload.role === 'CUSTOMER' || payload.sender_sub_role === 'CUSTOMER') {
+        return;
+      }
+      // หากกำลังอยู่ในหน้าแชท ไม่ต้องแสดง popup แจ้งเตือนและไม่ต้องนับ unread
+      if (screenRef.current === "chat") {
         return;
       }
       playOrderChime();
@@ -834,7 +845,7 @@ export default function CustomerPage() {
           />
         )}
         {screen === "recent" && <Recent orders={orders} onOpen={(order) => { setSelectedOrder(order); setScreen("delivery"); }} onHome={() => setScreen("home")} />}
-        {screen === "delivery" && <Delivery order={selectedOrder} onBack={() => setScreen("recent")} onChat={() => setScreen("chat")} onVerifySlip={(ord, slip) => verifySlip(ord, slip)} onCancelOrder={(ord) => handleCancelOrder(ord)} unreadMessages={unreadChatCount} />}
+        {screen === "delivery" && <Delivery order={selectedOrder} onBack={() => setScreen("recent")} onChat={() => { setUnreadChatCount(0); setScreen("chat"); }} onVerifySlip={(ord, slip) => verifySlip(ord, slip)} onCancelOrder={(ord) => handleCancelOrder(ord)} unreadMessages={unreadChatCount} />}
         {screen === "profile" && (
           <Profile
             profile={profile}
@@ -926,6 +937,7 @@ export default function CustomerPage() {
             order={selectedOrder}
             storeName={selectedOrder?.store}
             onBack={() => setScreen("delivery")}
+            onRead={() => setUnreadChatCount(0)}
           />
         )}
         {screen === "login" && (
@@ -2244,7 +2256,7 @@ function SavePlace({ dormList = dormitories, soiList = sois, initialAddress, cur
   );
 }
 
-function CustomerChat({ order, storeName, onBack }) {
+function CustomerChat({ order, storeName, onBack, onRead }) {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(true);
@@ -2263,6 +2275,7 @@ function CustomerChat({ order, storeName, onBack }) {
         if (list.length > 0) {
           const lastId = list[list.length - 1].id;
           if (lastId) await orderApi.markAsRead(orderId, lastId, "CUSTOMER").catch(() => {});
+          if (onRead) onRead();
         }
       } catch (err) {
         console.warn("Could not fetch chat history:", err);
@@ -2284,6 +2297,7 @@ function CustomerChat({ order, storeName, onBack }) {
           });
           if (payload.id) {
             orderApi.markAsRead(orderId, payload.id, "CUSTOMER").catch(() => {});
+            if (onRead) onRead();
           }
         }
       };

@@ -20,7 +20,16 @@ export function getApiBaseUrl() {
 export function getToken(role = "CUSTOMER") {
   if (typeof window === "undefined") return null;
   const roleKey = `${role.toLowerCase()}_token`;
-  return localStorage.getItem(roleKey) || localStorage.getItem("token") || null;
+  const specificToken = localStorage.getItem(roleKey);
+  if (specificToken) return specificToken;
+
+  const generalToken = localStorage.getItem("token");
+  if (!generalToken) return null;
+  try {
+    const payload = JSON.parse(atob(generalToken.split(".")[1]));
+    if (payload.role === role) return generalToken;
+  } catch (e) {}
+  return null;
 }
 
 /**

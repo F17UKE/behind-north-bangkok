@@ -28,7 +28,10 @@ class RiderBoardRepository {
           .orWhere(function() {
             // กรองเฉพาะออเดอร์ที่จัดส่งแล้วในวันนั้น (วันนี้)
             this.where('ORDERS.status', 'COMPLETED')
-              .andWhereRaw('(DATE("ORDERS"."updated_at") = CURRENT_DATE OR ("ORDERS"."updated_at" IS NULL AND DATE("ORDERS"."created_at") = CURRENT_DATE))');
+              .andWhere(function() {
+                this.whereRaw('(DATE("ORDERS"."updated_at" AT TIME ZONE \'Asia/Bangkok\') = DATE(NOW() AT TIME ZONE \'Asia/Bangkok\') OR ("ORDERS"."updated_at" IS NULL AND DATE("ORDERS"."created_at" AT TIME ZONE \'Asia/Bangkok\') = DATE(NOW() AT TIME ZONE \'Asia/Bangkok\')))')
+                  .orWhereRaw('"ORDERS"."updated_at" >= NOW() - INTERVAL \'24 HOURS\'');
+              });
           });
       })
       .orderBy('ORDERS.created_at', 'asc'); // ดึงงานเก่าสุดขึ้นก่อน (FIFO)
