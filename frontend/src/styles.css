@@ -714,7 +714,7 @@ h1, h2, h3, p { margin: 0; }
   display: grid;
   place-items: center;
 }
-.add-btn::after { content: "+"; color: #fff; font: 700 20px/1 Arial, sans-serif; }
+.add-btn { color: #fff; font: 700 20px/1 Arial, sans-serif; }
 
 .add-btn:disabled { background: #ddd; }
 

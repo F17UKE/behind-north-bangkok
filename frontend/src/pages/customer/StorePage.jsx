@@ -55,6 +55,7 @@ export default function StorePage() {
               <p>{item.available ? "พร้อมขาย" : "หมดชั่วคราว"}</p>
             </div>
             <button className="add-btn" disabled={!item.available}>
+              +
             </button>
           </div>
         ))}
