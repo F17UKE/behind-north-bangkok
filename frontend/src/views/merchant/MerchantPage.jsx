@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { BottomNav, MobileShell, SearchBar, StatusPill, TopBar, EmptyState } from "../../components/AppShell";
 import { merchantOrdersSeed, statusLabel } from "../../data/mockData";
 import { orderApi } from "../../api/orderApi";
+import { merchantApi } from "../../api/merchantApi";
 import { authApi } from "../../api/authApi";
 import { getSocket, playOrderChime } from "../../api/socketClient";
 import MerchantLogin from "./MerchantLogin";
@@ -270,6 +271,26 @@ export default function MerchantPage() {
           </div>
         )}
 
+        {/* แบนเนอร์แจ้งเตือนสถานะการอนุมัติร้านค้า */}
+        {currentMerchant && !currentMerchant.is_approved && (
+          <div style={{
+            background: "#fffbeb",
+            border: "1.5px solid #fde68a",
+            color: "#92400e",
+            padding: "12px 16px",
+            borderRadius: "14px",
+            margin: "10px 12px",
+            fontSize: "13px",
+            lineHeight: 1.5,
+            boxShadow: "0 2px 8px rgba(245, 158, 11, 0.1)"
+          }}>
+            <b style={{ display: "block", marginBottom: "4px", fontSize: "14px" }}>
+              ⏳ ร้านค้าของคุณอยู่ระหว่างรอการอนุมัติจากผู้ดูแลระบบ (Pending Approval)
+            </b>
+            คุณสามารถเพิ่มเมนูอาหารและตั้งค่าข้อมูลร้านค้าล่วงหน้าได้ แต่ยังไม่สามารถเปิดรับออเดอร์จากลูกค้าได้จนกว่าแอดมินจะอนุมัติ
+          </div>
+        )}
+
         {screen === "home" && (
           <MerchantHome 
             orders={orders} 
@@ -278,6 +299,12 @@ export default function MerchantPage() {
             setQuery={setQuery} 
             merchant={currentMerchant}
             onLogout={handleLogout}
+          />
+        )}
+        {screen === "menus" && (
+          <MerchantMenus
+            merchant={currentMerchant}
+            onBack={() => setScreen("home")}
           />
         )}
         {screen === "orders" && (
@@ -318,6 +345,7 @@ export default function MerchantPage() {
         items={[
           { key: "home", label: "หน้าหลัก", icon: "⌂" },
           { key: "orders", label: `ออเดอร์ (${orders.filter(o => ["PENDING_ACCEPT", "PENDING_PAYMENT", "PAID"].includes(o.status)).length})`, icon: "▣" },
+          { key: "menus", label: "เมนูอาหาร", icon: "🍲" },
           { key: "delivery", label: "จัดส่ง", icon: "🛵" },
           { key: "chat", label: "แชท", icon: "💬" }
         ]} 
@@ -340,7 +368,14 @@ function MerchantHome({ orders, go, query, setQuery, merchant, onLogout }) {
       <div className="merchant-profile">
         <div className="avatar peach">🏪</div>
         <div>
-          <b>{storeTitle}</b>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <b>{storeTitle}</b>
+            {merchant?.is_approved ? (
+              <span style={{ background: "#dcfce7", color: "#15803d", padding: "2px 8px", borderRadius: "6px", fontSize: "10.5px", fontWeight: 700 }}>อนุมัติแล้ว</span>
+            ) : (
+              <span style={{ background: "#fef3c7", color: "#b45309", padding: "2px 8px", borderRadius: "6px", fontSize: "10.5px", fontWeight: 700 }}>รอแอดมินอนุมัติ</span>
+            )}
+          </div>
           <small>{locationDesc}</small>
         </div>
         <div style={{ display: "flex", gap: "6px" }}>
@@ -352,6 +387,7 @@ function MerchantHome({ orders, go, query, setQuery, merchant, onLogout }) {
       <SearchBar value={query} onChange={setQuery} placeholder="ค้นหาเลขออเดอร์ หรือชื่อลูกค้า..." />
       
       <div className="merchant-quick">
+        <button onClick={() => go("menus")} style={{ background: "#ecfdf5", color: "#065f46", borderColor: "#a7f3d0" }}>🍲 จัดการเมนู (＋เพิ่ม)</button>
         <button onClick={() => go("orders")}>ทั้งหมด ({orders.length})</button>
         <button onClick={() => go("orders")}>รอรับ <span>{orders.filter(o => ["PENDING_ACCEPT", "PAID"].includes(o.status)).length}</span></button>
         <button onClick={() => go("orders")}>กำลังทำ <span>{orders.filter(o => o.status === "PREPARING").length}</span></button>
@@ -523,5 +559,280 @@ function MerchantChat({ selected, setSelected, messages, value, setValue, onSend
         </div>
       </div>
     </>
+  );
+}
+
+function MerchantMenus({ merchant, onBack }) {
+  const [menus, setMenus] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [name, setName] = useState("");
+  const [price, setPrice] = useState("");
+  const [description, setDescription] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    loadMenus();
+  }, [merchant?.id]);
+
+  async function loadMenus() {
+    setLoading(true);
+    try {
+      if (merchant?.id) {
+        const data = await merchantApi.getMerchantMenu(merchant.id);
+        if (Array.isArray(data)) setMenus(data);
+      }
+    } catch (err) {
+      console.warn("Could not load merchant menus:", err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleCreateMenu(e) {
+    e.preventDefault();
+    if (!name.trim() || !price) return;
+    setSubmitting(true);
+    try {
+      await merchantApi.createMenu({
+        name: name.trim(),
+        price: parseFloat(price),
+        description: description.trim() || undefined,
+        is_available: true
+      });
+      setNotice("✅ เพิ่มเมนูอาหารสำเร็จ!");
+      setName("");
+      setPrice("");
+      setDescription("");
+      setShowAddModal(false);
+      loadMenus();
+      setTimeout(() => setNotice(""), 3000);
+    } catch (err) {
+      alert("ไม่สามารถเพิ่มเมนูได้: " + (err?.response?.data?.error || err.message));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleToggle(menuId, currentAvail) {
+    try {
+      await merchantApi.toggleMenuAvailability(menuId, !currentAvail);
+      setMenus(current => current.map(m => m.id === menuId ? { ...m, is_available: !currentAvail } : m));
+    } catch (err) {
+      console.warn("Toggle error:", err);
+    }
+  }
+
+  async function handleDelete(menuId) {
+    if (!confirm("คุณแน่ใจว่าต้องการลบเมนูนี้ใช่หรือไม่?")) return;
+    try {
+      await merchantApi.deleteMenu(menuId);
+      setMenus(current => current.filter(m => m.id !== menuId));
+    } catch (err) {
+      console.warn("Delete error:", err);
+    }
+  }
+
+  return (
+    <div style={{ paddingBottom: "30px" }}>
+      <TopBar title="จัดการเมนูอาหาร" subtitle={`${merchant?.store_name || "ร้านอาหาร"} (${menus.length} รายการ)`} onBack={onBack} />
+      
+      {notice && (
+        <div style={{ background: "#2f855a", color: "white", padding: "10px 14px", borderRadius: "10px", margin: "10px 12px", textAlign: "center", fontSize: "13px" }}>
+          {notice}
+        </div>
+      )}
+
+      <div style={{ padding: "0 12px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <b style={{ fontSize: "16px", color: "#1e293b" }}>รายการอาหารของร้าน</b>
+          <small style={{ display: "block", color: "#64748b" }}>จัดการราคาและเปิด-ปิดการขาย</small>
+        </div>
+        <button
+          onClick={() => setShowAddModal(true)}
+          style={{
+            background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+            color: "white",
+            border: "none",
+            borderRadius: "10px",
+            padding: "8px 14px",
+            fontSize: "13px",
+            fontWeight: 700,
+            cursor: "pointer",
+            boxShadow: "0 4px 12px rgba(5, 150, 105, 0.25)"
+          }}
+        >
+          ＋ เพิ่มเมนูใหม่
+        </button>
+      </div>
+
+      {/* Modal เพิ่มเมนูใหม่ */}
+      {showAddModal && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: "rgba(0,0,0,0.5)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 999,
+          padding: "16px"
+        }}>
+          <div style={{
+            background: "white",
+            borderRadius: "20px",
+            padding: "24px",
+            width: "100%",
+            maxWidth: "420px",
+            boxShadow: "0 20px 40px rgba(0,0,0,0.2)"
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+              <b style={{ fontSize: "18px", color: "#1e293b" }}>🍲 เพิ่มเมนูอาหารใหม่</b>
+              <button onClick={() => setShowAddModal(false)} style={{ border: "none", background: "none", fontSize: "18px", cursor: "pointer", color: "#64748b" }}>✕</button>
+            </div>
+
+            <form onSubmit={handleCreateMenu} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+              <div className="auth-field-group">
+                <label>ชื่อเมนูอาหาร *</label>
+                <input
+                  type="text"
+                  placeholder="เช่น ข้าวกะเพราหมูกรอบไข่ดาว"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="auth-field-group">
+                <label>ราคา (บาท) *</label>
+                <input
+                  type="number"
+                  placeholder="เช่น 60"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                  required
+                  min="0"
+                  step="1"
+                />
+              </div>
+
+              <div className="auth-field-group">
+                <label>รายละเอียด / ส่วนผสม</label>
+                <textarea
+                  placeholder="เช่น รสจัดจ้าน เสิร์ฟพร้อมน้ำซุป"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                />
+              </div>
+
+              <div style={{ display: "flex", gap: "10px", marginTop: "8px" }}>
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  style={{
+                    flex: 1,
+                    padding: "12px",
+                    borderRadius: "10px",
+                    border: "1px solid #cbd5e1",
+                    background: "#f8fafc",
+                    color: "#475569",
+                    fontWeight: 600,
+                    cursor: "pointer"
+                  }}
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  style={{
+                    flex: 2,
+                    padding: "12px",
+                    borderRadius: "10px",
+                    border: "none",
+                    background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                    color: "white",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    boxShadow: "0 4px 12px rgba(5, 150, 105, 0.25)"
+                  }}
+                >
+                  {submitting ? "กำลังบันทึก..." : "บันทึกเมนู"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* รายการเมนู */}
+      <div style={{ padding: "0 12px" }}>
+        {menus.length > 0 ? (
+          menus.map((item) => (
+            <div
+              key={item.id}
+              style={{
+                background: "white",
+                borderRadius: "14px",
+                padding: "14px 16px",
+                marginBottom: "10px",
+                border: "1px solid #e2e8f0",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.03)"
+              }}
+            >
+              <div>
+                <b style={{ fontSize: "15px", color: "#1e293b", display: "block" }}>{item.name}</b>
+                <small style={{ color: "#64748b", display: "block", marginBottom: "4px" }}>{item.description || "ปรุงสดใหม่ตามสั่ง"}</small>
+                <strong style={{ color: "#10b981", fontSize: "15px" }}>฿{item.price}</strong>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <button
+                  onClick={() => handleToggle(item.id, item.is_available)}
+                  style={{
+                    background: item.is_available ? "#ecfdf5" : "#fef2f2",
+                    color: item.is_available ? "#059669" : "#dc2626",
+                    border: item.is_available ? "1px solid #a7f3d0" : "1px solid #fecaca",
+                    borderRadius: "8px",
+                    padding: "6px 10px",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    cursor: "pointer"
+                  }}
+                >
+                  {item.is_available ? "เปิดขาย" : "หมดชั่วคราว"}
+                </button>
+                <button
+                  onClick={() => handleDelete(item.id)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "#94a3b8",
+                    cursor: "pointer",
+                    fontSize: "16px",
+                    padding: "4px 8px"
+                  }}
+                  title="ลบเมนู"
+                >
+                  🗑️
+                </button>
+              </div>
+            </div>
+          ))
+        ) : (
+          <EmptyState
+            title="ยังไม่มีเมนูอาหาร"
+            text="กดปุ่ม '＋ เพิ่มเมนูใหม่' ด้านบน เพื่อเริ่มต้นสร้างเมนูของร้านคุณ"
+          />
+        )}
+      </div>
+    </div>
   );
 }

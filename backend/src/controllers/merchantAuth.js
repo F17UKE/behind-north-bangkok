@@ -60,9 +60,12 @@ const register = async (req, res) => {
             is_approved: false
         });
 
+        const token = generateToken(newMerchant, 'MERCHANT');
+
         delete newMerchant.password_hash;
         res.status(201).json({ 
             message: 'Merchant registered successfully (waiting for admin approval)', 
+            token,
             merchant: newMerchant 
         });
 

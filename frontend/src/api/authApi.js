@@ -37,6 +37,17 @@ export const authApi = {
     return res;
   },
 
+  async registerMerchant(merchantData) {
+    const res = await api.post("/auth/merchant/register", merchantData);
+    if (res?.token) {
+      setToken(res.token, "MERCHANT");
+      if (typeof window !== "undefined") {
+        localStorage.setItem("merchant_user", JSON.stringify(res.merchant || res.user || {}));
+      }
+    }
+    return res;
+  },
+
   // --- Rider Auth ---
   async loginRider(username, password) {
     const res = await api.post("/auth/rider/login", { username, password });

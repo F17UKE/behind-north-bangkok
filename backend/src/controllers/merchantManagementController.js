@@ -26,6 +26,16 @@ exports.updateStatus = async (req, res) => {
   try {
     const merchantId = req.user.id;
     const { is_open } = req.body;
+
+    // ตรวจสอบว่าร้านค้าได้รับการอนุมัติจาก Admin แล้วหรือยังก่อนเปิดรับออเดอร์
+    const profile = await repo.getMerchantProfile(merchantId);
+    if (is_open && profile && !profile.is_approved) {
+      return res.status(403).json({
+        success: false,
+        message: 'ร้านค้าของคุณอยู่ระหว่างรอการอนุมัติจากผู้ดูแลระบบ ยังไม่สามารถเปิดขายได้'
+      });
+    }
+
     const updated = await repo.updateStoreStatus(merchantId, is_open);
     res.status(200).json({ success: true, data: updated[0] });
   } catch (error) {

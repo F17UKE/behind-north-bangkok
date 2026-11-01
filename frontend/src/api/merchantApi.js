@@ -42,6 +42,37 @@ export const merchantApi = {
   async getDeliveryFee(merchantId, dormitoryId) {
     const res = await api.get(`/merchants/${merchantId}/delivery-fee?dormitory_id=${dormitoryId}`);
     return res?.delivery_fee ?? 10;
+  },
+
+  // --- Merchant Management (สำหรับร้านค้าจัดการเมนูและโปรไฟล์) ---
+  async getStoreProfile() {
+    const res = await api.get("/merchant-management/profile");
+    return res?.data || null;
+  },
+
+  async updateStoreStatus(is_open) {
+    const res = await api.patch("/merchant-management/status", { is_open });
+    return res?.data || res;
+  },
+
+  async createMenu(menuData) {
+    const res = await api.post("/merchant-management/menus", menuData);
+    return res?.data || res;
+  },
+
+  async updateMenu(menuId, menuData) {
+    const res = await api.put(`/merchant-management/menus/${menuId}`, menuData);
+    return res?.data || res;
+  },
+
+  async deleteMenu(menuId) {
+    const res = await api.delete(`/merchant-management/menus/${menuId}`);
+    return res?.data || res;
+  },
+
+  async toggleMenuAvailability(menuId, is_available) {
+    const res = await api.patch(`/merchant-management/menus/${menuId}/availability`, { is_available });
+    return res?.data || res;
   }
 };
 
