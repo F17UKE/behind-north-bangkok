@@ -101,6 +101,36 @@ exports.rejectOrder = async (req, res) => {
   }
 };
 
+// ร้านค้าเริ่มปรุงอาหาร (PAID -> PREPARING)
+exports.startPreparing = async (req, res) => {
+  try {
+    const { order_id } = req.params;
+    const order = await repo.getOrderById(order_id);
+
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+    if (order.merchant_id !== req.user.id) return res.status(403).json({ success: false, message: 'Unauthorized' });
+
+    if (order.status !== 'PAID') {
+      return res.status(400).json({ success: false, message: 'Order must be in PAID state to start preparing' });
+    }
+
+    const updated = await repo.updateOrderStatus(order_id, 'PREPARING');
+    emitOrderStatus(req, order_id, 'PREPARING');
+
+    // แจ้งเตือนไปยังหน้าจอครัว KDS
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`merchant_${req.user.id}_kds`).emit('NEW_KITCHEN_ORDER', {
+        order_id: Number(order_id)
+      });
+    }
+
+    res.status(200).json({ success: true, data: updated[0] });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
 exports.assignRider = async (req, res) => {
   try {
     const { order_id } = req.params;

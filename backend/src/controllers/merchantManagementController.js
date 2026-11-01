@@ -71,7 +71,6 @@ exports.updateMenu = async (req, res) => {
       image_url 
     });
     
-    // ถ้าไม่มีการอัปเดต (เช่น หา menu_id ไม่เจอ หรือไม่ใช่เมนูของร้านค้านี้)
     if (!updated || updated.length === 0) {
       return res.status(404).json({ 
         success: false, 
@@ -80,6 +79,20 @@ exports.updateMenu = async (req, res) => {
     }
 
     res.status(200).json({ success: true, data: updated[0] });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+exports.deleteMenu = async (req, res) => {
+  try {
+    const merchantId = req.user.id;
+    const { menu_id } = req.params;
+    const deletedCount = await repo.deleteMenuItem(merchantId, menu_id);
+    if (!deletedCount) {
+      return res.status(404).json({ success: false, message: 'Menu not found or unauthorized to delete' });
+    }
+    res.status(200).json({ success: true, message: 'Menu deleted successfully' });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
