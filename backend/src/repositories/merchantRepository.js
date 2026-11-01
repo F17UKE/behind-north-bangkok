@@ -1,11 +1,14 @@
 const db = require('../db');
 
 class MerchantRepository {
-  // 1. ดึงรายการร้านค้าทั้งหมดที่เปิดให้บริการ (is_open = true)
+  // 1. ดึงรายการร้านค้าทั้งหมดที่เปิดให้บริการ (is_open = true และผ่านการอนุมัติ is_approved = true)
   async findAllOpenMerchants() {
     return await db('MERCHANTS')
       .select('id', 'store_name', 'prefix', 'is_open', 'location', 'store_image_url')
-      .where('is_open', true);
+      .where('is_open', true)
+      .andWhere(function() {
+        this.where('is_approved', true).orWhereNull('is_approved');
+      });
   }
 
   // 2. ดึงข้อมูลรายละเอียดร้านค้าเดี่ยวตาม merchant_id
@@ -53,7 +56,6 @@ class MerchantRepository {
     // ประกอบโครงสร้าง Hierarchical Tree
     const formattedGroups = optionGroups.map((group) => {
       return {
-
         ...group,
         choices: choices.filter((choice) => choice.option_group_id === group.id),
       };
