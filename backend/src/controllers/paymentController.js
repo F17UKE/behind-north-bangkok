@@ -3,6 +3,7 @@ const generatePayload = require('promptpay-qr');
 const qrcode = require('qrcode');
 const paymentRepository = require('../repositories/paymentRepository');
 const slipVerification = require('../utils/slipVerification');
+const storageService = require('../services/storageService');
 const db = require('../db');
 
 // 1. สร้าง PromptPay QR Code
@@ -54,70 +55,84 @@ const generatePromptPayQR = async (req, res) => {
 // 2. อัปโหลดและตรวจสอบสลิป
 const uploadAndVerifySlip = async (req, res) => {
     const { order_id } = req.params;
-    const { image_url } = req.body;
-
-    if (!image_url) {
-        return res.status(400).json({ error: 'Image URL is required' });
-    }
-
-    // เปิด Transaction เพราะมีการ Insert (สลิป) และ Update (สถานะออเดอร์) พร้อมกัน
-    const trx = await db.transaction();
+    let finalImageUrl = req.body?.image_url;
 
     try {
-        // 1. ดึงข้อมูลออเดอร์
-        const orderInfo = await paymentRepository.getOrderPaymentInfo(order_id, trx);
-        if (!orderInfo) {
-            await trx.rollback();
-            return res.status(404).json({ error: 'Order not found' });
+        // รองรับทั้งการอัปโหลดไฟล์ตรงๆ (req.file) หรือส่ง image_url ที่อัปโหลดไว้แล้วมา
+        if (req.file) {
+            const uploadResult = await storageService.uploadImage(req.file, 'slips');
+            finalImageUrl = uploadResult.publicUrl;
         }
 
-        if (orderInfo.status !== 'PENDING_PAYMENT') {
-            await trx.rollback();
-            return res.status(400).json({ error: 'Payment already processed or order cancelled' });
+        if (!finalImageUrl) {
+            return res.status(400).json({ error: 'Image file or image_url is required' });
         }
 
-        // 2. ส่งรูปสลิปไปตรวจสอบ (ยอดเงิน และ promptpay)
-        const verificationResult = await slipVerification.verifySlip(
-            image_url, 
-            orderInfo.total_amount, 
-            orderInfo.promptpay_id,
-            trx
-        );
+        // เปิด Transaction เพราะมีการ Insert (สลิป) และ Update (สถานะออเดอร์) พร้อมกัน
+        const trx = await db.transaction();
 
-        if (!verificationResult.isValid) {
-            await trx.rollback();
-            return res.status(400).json({ error: verificationResult.message });
-        }
+        try {
+            // 1. ดึงข้อมูลออเดอร์
+            const orderInfo = await paymentRepository.getOrderPaymentInfo(order_id, trx);
+            if (!orderInfo) {
+                await trx.rollback();
+                return res.status(404).json({ error: 'Order not found' });
+            }
 
-        // 3. ถ้าสลิปถูกต้อง บันทึกข้อมูลลงตาราง PAYMENT_SLIPS
-        await paymentRepository.saveSlip(order_id, image_url, verificationResult.refNumber, trx);
+            if (orderInfo.status !== 'PENDING_PAYMENT') {
+                await trx.rollback();
+                return res.status(400).json({ error: 'Payment already processed or order cancelled' });
+            }
 
-        // 4. เปลี่ยนสถานะออเดอร์เป็น PAID
-        await paymentRepository.updateOrderStatus(order_id, 'PAID', trx);
+            // 2. ส่งรูปสลิปไปตรวจสอบ (จำลองผ่าน Mock Verification)
+            const verificationResult = await slipVerification.verifySlip(
+                finalImageUrl, 
+                orderInfo.total_amount, 
+                orderInfo.promptpay_id,
+                trx
+            );
 
-        // ยืนยันการเปลี่ยนแปลงข้อมูล
-        await trx.commit();
+            if (!verificationResult.isValid) {
+                await trx.rollback();
+                return res.status(400).json({ error: verificationResult.message });
+            }
 
-        // 5. ส่งสัญญาณ Socket.io แจ้งเตือนร้านค้าและลูกค้าว่าชำระเงินเรียบร้อยแล้ว
-        const io = req.app.get('io');
-        if (io) {
-            io.to(`order_${order_id}`).emit('ORDER_STATUS_UPDATED', {
-                order_id: Number(order_id),
+            // 3. ถ้าสลิปถูกต้อง บันทึกข้อมูลลงตาราง PAYMENT_SLIPS
+            await paymentRepository.saveSlip(order_id, finalImageUrl, verificationResult.refNumber, trx);
+
+            // 4. เปลี่ยนสถานะออเดอร์เป็น PAID
+            await paymentRepository.updateOrderStatus(order_id, 'PAID', trx);
+
+            // ยืนยันการเปลี่ยนแปลงข้อมูล
+            await trx.commit();
+
+            // 5. ส่งสัญญาณ Socket.io แจ้งเตือนร้านค้าและลูกค้าว่าชำระเงินเรียบร้อยแล้ว
+            const io = req.app.get('io');
+            if (io) {
+                io.to(`order_${order_id}`).emit('ORDER_STATUS_UPDATED', {
+                    order_id: Number(order_id),
+                    status: 'PAID',
+                    updated_by: 'CUSTOMER',
+                    updated_at: new Date()
+                });
+            }
+            
+            return res.status(200).json({ 
+                success: true,
+                message: 'Payment verified successfully (Mock Mode)',
                 status: 'PAID',
-                updated_by: 'CUSTOMER',
-                updated_at: new Date()
+                imageUrl: finalImageUrl,
+                refNumber: verificationResult.refNumber
             });
+
+        } catch (innerError) {
+            await trx.rollback();
+            throw innerError;
         }
-        
-        res.status(200).json({ 
-            message: 'Payment verified successfully',
-            status: 'PAID'
-        });
 
     } catch (error) {
-        await trx.rollback();
         console.error('Error verifying slip:', error);
-        res.status(500).json({ error: 'Internal server error during verification' });
+        return res.status(500).json({ error: 'Internal server error during verification' });
     }
 };
 

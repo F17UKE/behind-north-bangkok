@@ -41,11 +41,11 @@ const updateOrderStatus = async (orderId, status, trx = db) => {
         .update({ status: status });
 };
 
-// ลบสลิปที่อายุเกิน 24 ชั่วโมง (Data Purging Policy)
-const purgeOldPaymentSlips = async () => {
-    const twentyFourHoursAgo = new Date(Date.now() - (24 * 60 * 60 * 1000));
+// ลบสลิปที่อายุเกินกำหนด (Data Purging Policy: ค่าเริ่มต้น 7 วัน เพื่อประหยัดพื้นที่จัดเก็บ)
+const purgeOldPaymentSlips = async (days = 7) => {
+    const cutoffDate = new Date(Date.now() - (days * 24 * 60 * 60 * 1000));
     return await db('PAYMENT_SLIPS')
-        .where('created_at', '<', twentyFourHoursAgo)
+        .where('created_at', '<', cutoffDate)
         .del();
 };
 

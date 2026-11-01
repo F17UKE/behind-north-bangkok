@@ -2,7 +2,7 @@ const express = require('express');
 const http = require('http');
 const cors = require('cors');
 const { Server } = require('socket.io');
-const cron = require('node-cron'); // [เพิ่ม] สำหรับจัดการ Cron Job
+const cron = require('node-cron');
 require('dotenv').config();
 
 const app = express();
@@ -19,13 +19,15 @@ const merchantRoutes = require('./src/routes/merchant');
 const orderRoutes = require('./src/routes/order');
 const paymentRoutes = require('./src/routes/payment');
 const kdsRoutes = require('./src/routes/kds');
-const chatRoutes = require('./src/routes/chat'); // [เพิ่ม] Route สำหรับระบบแชท
+const chatRoutes = require('./src/routes/chat');
 const menuRoutes = require('./src/routes/menu');
 const merchantManagementRoutes = require('./src/routes/merchantManagement');
 const riderManagementRoutes = require('./src/routes/riderManagement');
 const orderWorkflowRoute = require('./src/routes/orderWorkflow');
 const riderBoardRoute = require('./src/routes/riderBoard');
 const masterDataRoute = require('./src/routes/masterData');
+const uploadRoutes = require('./src/routes/upload'); // [เพิ่ม] ระบบอัปโหลดรูปภาพ (Supabase Storage)
+const adminRoutes = require('./src/routes/admin');   // [เพิ่ม] ระบบ Admin และอนุมัติร้านค้า
 
 // 2. Mount Routes
 app.use('/api', masterDataRoute);
@@ -35,12 +37,14 @@ app.use('/api/merchants', merchantRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/orders', paymentRoutes);
 app.use('/api/merchants/kds', kdsRoutes);
-app.use('/api/orders', chatRoutes); // [เพิ่ม] ใช้งาน Chat API (เช่น /api/orders/:order_id/messages)
+app.use('/api/orders', chatRoutes);
 app.use('/api/menus', menuRoutes);
 app.use('/api/merchant-management', merchantManagementRoutes);
 app.use('/api/merchant-management/riders', riderManagementRoutes);
 app.use('/api/order-workflow', orderWorkflowRoute);
 app.use('/api/riders', riderBoardRoute);
+app.use('/api/upload', uploadRoutes);               // [เพิ่ม] /api/upload/slip, /api/upload/menu-image, /api/upload/store-image
+app.use('/api/admin', adminRoutes);                 // [เพิ่ม] /api/admin/merchants/pending, approve, reject
 
 // 3. ตั้งค่า Socket.io สำหรับระบบ Real-time Chat และ Notification
 const io = new Server(server, {
@@ -50,28 +54,48 @@ const io = new Server(server, {
 // แชร์ instance io ให้ Controller อื่นๆ เรียกใช้งานผ่าน req.app.get('io')
 app.set('io', io);
 
-// [เพิ่ม] เรียกใช้งาน Socket Logic จากไฟล์แยก (src/socket.js)
+// เรียกใช้งาน Socket Logic จากไฟล์แยก (src/socket.js)
 const socketHandler = require('./src/socket');
 socketHandler(io); 
 
-// 4. [เพิ่ม] Cron Job: Data Purging Policy (ลบข้อมูลเกิน 24 ชม.)
+// 4. เตรียม Storage Bucket (Supabase Storage)
+const storageService = require('./src/services/storageService');
+storageService.ensureBucketExists().catch(err => console.error('Bucket check warning:', err.message));
+
+// 5. Cron Jobs: Data Purging & Storage Cleanup
 const chatRepository = require('./src/repositories/chatRepository');
 const paymentRepository = require('./src/repositories/paymentRepository');
 
-// รันทุกๆ 1 ชั่วโมง ('0 * * * *') หรือเปลี่ยนเป็น ('0 0 * * *') ถ้ารันแค่วันละครั้งตอนเที่ยงคืน
+// รันทุกๆ 1 ชั่วโมง เพื่อลบข้อความแชทเกิน 24 ชม.
 cron.schedule('0 * * * *', async () => {
     try {
         const deletedMessagesCount = await chatRepository.purgeOldMessages();
         if (deletedMessagesCount > 0) {
             console.log(`[Cron Job] Purged ${deletedMessagesCount} messages older than 24h.`);
         }
+    } catch (error) {
+        console.error('[Cron Job] Failed to purge old messages:', error);
+    }
+});
 
-        const deletedSlipsCount = await paymentRepository.purgeOldPaymentSlips();
+// รันทุกวันเวลาเที่ยงคืน (00:00) เพื่อลบสลิปและไฟล์รูปใน Supabase ที่อายุเกิน 7 วัน (1 สัปดาห์) ตามข้อกำหนด
+cron.schedule('0 0 * * *', async () => {
+    try {
+        console.log('[Cron Job] Starting weekly cleanup (7-day retention)...');
+
+        // 1. ลบไฟล์รูปสลิปใน Supabase Storage ที่เกิน 7 วัน
+        const deletedStorageFiles = await storageService.cleanupOldImages(7, 'slips');
+        if (deletedStorageFiles > 0) {
+            console.log(`[Cron Job] Deleted ${deletedStorageFiles} old slip files from Supabase Storage.`);
+        }
+
+        // 2. ลบประวัติในตาราง PAYMENT_SLIPS ที่เกิน 7 วัน
+        const deletedSlipsCount = await paymentRepository.purgeOldPaymentSlips(7);
         if (deletedSlipsCount > 0) {
-            console.log(`[Cron Job] Purged ${deletedSlipsCount} payment slips older than 24h.`);
+            console.log(`[Cron Job] Purged ${deletedSlipsCount} payment slip records older than 7 days.`);
         }
     } catch (error) {
-        console.error('[Cron Job] Failed to purge old records:', error);
+        console.error('[Cron Job] Failed during weekly storage cleanup:', error);
     }
 });
 
