@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { ShoppingBag, Store, ShieldCheck } from "lucide-react";
+import { ShoppingBag, Store, ShieldCheck, Bike } from "lucide-react";
 
 const roles = [
   {
@@ -9,12 +9,19 @@ const roles = [
     icon: ShoppingBag,
     cls: "orange"
   },
-  {
+    {
     to: "/merchant",
     title: "ร้านค้า",
     desc: "จัดการออเดอร์ เมนู และยอดขาย",
     icon: Store,
     cls: "green"
+  },
+  {
+    to: "/rider",
+    title: "ไรเดอร์",
+    desc: "รับงานจัดส่ง นำส่งอาหาร และอัปเดตสถานะ",
+    icon: Bike,
+    cls: "yellow"
   },
   {
     to: "/admin",

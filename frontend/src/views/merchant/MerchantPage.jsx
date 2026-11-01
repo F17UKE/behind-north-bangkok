@@ -6,6 +6,7 @@ import { merchantOrdersSeed, statusLabel } from "../../data/mockData";
 import { orderApi } from "../../api/orderApi";
 import { authApi } from "../../api/authApi";
 import { getSocket, playOrderChime } from "../../api/socketClient";
+import MerchantLogin from "./MerchantLogin";
 
 export default function MerchantPage() {
   const [screen, setScreen] = useState("home");
@@ -19,14 +20,20 @@ export default function MerchantPage() {
   const [statusNotice, setStatusNotice] = useState("");
   const [newOrderAlert, setNewOrderAlert] = useState(null);
   const [currentMerchant, setCurrentMerchant] = useState(null);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
 
-  // โหลดข้อมูลร้านค้าและออเดอร์เริ่มต้น
   useEffect(() => {
-    const merchantUser = authApi.getCurrentUser("MERCHANT");
-    setCurrentMerchant(merchantUser);
-    loadMerchantOrders();
+    const logged = authApi.isLoggedIn("MERCHANT");
+    setIsLoggedIn(logged);
+    if (logged) {
+      const merchantUser = authApi.getCurrentUser("MERCHANT");
+      setCurrentMerchant(merchantUser);
+      loadMerchantOrders();
+      initSocket(merchantUser);
+    }
+  }, []);
 
-    // เชื่อมต่อ Socket.io สำหรับรับออเดอร์และการแจ้งเตือน Real-time แบบไม่ต้องรีเฟรช
+  function initSocket(merchantUser) {
     const socket = getSocket("MERCHANT");
     if (!socket) return;
 
@@ -59,10 +66,8 @@ export default function MerchantPage() {
             : "เมื่อสักครู่"
         };
 
-        // เพิ่มออเดอร์ใหม่ขึ้นด้านบนสุดของรายการทันที ไม่ต้องรีเฟรชหน้าเว็บ
         setOrders((current) => [mapped, ...current.filter((o) => o.rawId !== incoming.id)]);
 
-        // แสดงแจ้งเตือนเด้ง Pop-up Banner ด้านบน
         setNewOrderAlert({
           id: mapped.id,
           rawId: mapped.rawId,
@@ -71,12 +76,11 @@ export default function MerchantPage() {
           total: mapped.total
         });
 
-        // ดึงข้อมูลอัปเดตแบบเต็มในเบื้องหลัง
         loadMerchantOrders();
       }
     };
 
-    // 2. รับการอัปเดตสถานะออเดอร์แบบ Real-time (เช่น ลูกค้าจ่ายเงินเสร็จ / ยกเลิก)
+    // 2. รับการอัปเดตสถานะออเดอร์แบบ Real-time
     const handleStatusUpdate = (payload) => {
       console.log("⚡ [Realtime] Order status updated:", payload);
       const { order_id, status } = payload;
@@ -99,7 +103,14 @@ export default function MerchantPage() {
       socket.off("NEW_ORDER_RECEIVED", handleNewOrder);
       socket.off("ORDER_STATUS_UPDATED", handleStatusUpdate);
     };
-  }, []);
+  }
+
+  function handleLogout() {
+    authApi.logout("MERCHANT");
+    setIsLoggedIn(false);
+    setCurrentMerchant(null);
+    setOrders(merchantOrdersSeed);
+  }
 
   async function loadMerchantOrders() {
     if (!authApi.isLoggedIn("MERCHANT")) return;
@@ -160,6 +171,24 @@ export default function MerchantPage() {
     setMessages((m) => [...m, { user: selectedChat, from: "merchant", text: chatText }]); 
     setChatText(""); 
   };
+
+  if (!isLoggedIn) {
+    return (
+      <MobileShell tone="merchant">
+        <MerchantLogin
+          onSuccess={(merchantData) => {
+            setCurrentMerchant(merchantData);
+            setIsLoggedIn(true);
+            loadMerchantOrders();
+            initSocket(merchantData);
+          }}
+          onBack={() => {
+            window.location.href = "/";
+          }}
+        />
+      </MobileShell>
+    );
+  }
 
   return (
     <MobileShell tone="merchant">
@@ -248,6 +277,7 @@ export default function MerchantPage() {
             query={query} 
             setQuery={setQuery} 
             merchant={currentMerchant}
+            onLogout={handleLogout}
           />
         )}
         {screen === "orders" && (
@@ -296,7 +326,7 @@ export default function MerchantPage() {
   );
 }
 
-function MerchantHome({ orders, go, query, setQuery, merchant }) {
+function MerchantHome({ orders, go, query, setQuery, merchant, onLogout }) {
   const storeTitle = merchant?.store_name || "ร้านอาหารหลัง มจพ.";
   const locationDesc = merchant?.location || "หลังมอ ซอย 11 · เปิดรับออเดอร์ (Real-time เชื่อมต่อแล้ว)";
 
@@ -313,7 +343,10 @@ function MerchantHome({ orders, go, query, setQuery, merchant }) {
           <b>{storeTitle}</b>
           <small>{locationDesc}</small>
         </div>
-        <button onClick={() => go("orders")} title="รีเฟรชออเดอร์">⚡ Real-time</button>
+        <div style={{ display: "flex", gap: "6px" }}>
+          <button onClick={() => go("orders")} title="รีเฟรชออเดอร์">⚡ Real-time</button>
+          <button onClick={onLogout} style={{ background: "#fff1f2", color: "#e11d48", border: "1px solid #fecdd3" }} title="ออกจากระบบร้านค้า">🚪 ออก</button>
+        </div>
       </div>
 
       <SearchBar value={query} onChange={setQuery} placeholder="ค้นหาเลขออเดอร์ หรือชื่อลูกค้า..." />

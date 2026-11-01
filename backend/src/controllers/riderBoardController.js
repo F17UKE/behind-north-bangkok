@@ -47,13 +47,20 @@ exports.updateOrderStatus = async (req, res) => {
     // 4. ส่งสัญญาณแจ้งเตือน Real-time ให้ลูกค้าและร้านค้าทราบ
     const io = req.app.get('io');
     if (io) {
-      io.to(`order_${order_id}`).emit('ORDER_STATUS_UPDATED', {
+      const payload = {
         order_id: Number(order_id),
         status: status,
         rider_id: riderId,
         updated_by: 'RIDER',
         updated_at: new Date()
-      });
+      };
+      io.to(`order_${order_id}`).emit('ORDER_STATUS_UPDATED', payload);
+      if (order.merchant_id) {
+        io.to(`merchant_${order.merchant_id}`).emit('ORDER_STATUS_UPDATED', payload);
+      }
+      if (order.customer_id) {
+        io.to(`customer_${order.customer_id}`).emit('ORDER_STATUS_UPDATED', payload);
+      }
     }
 
     res.status(200).json({ success: true, data: updated[0] });

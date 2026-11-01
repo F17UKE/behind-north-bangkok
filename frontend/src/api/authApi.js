@@ -37,6 +37,19 @@ export const authApi = {
     return res;
   },
 
+  // --- Rider Auth ---
+  async loginRider(username, password) {
+    const res = await api.post("/auth/rider/login", { username, password });
+    if (res?.token) {
+      setToken(res.token, "RIDER");
+      if (typeof window !== "undefined") {
+        const riderData = res.rider || res.user || {};
+        localStorage.setItem("rider_user", JSON.stringify(riderData));
+      }
+    }
+    return res;
+  },
+
   // --- Admin Auth ---
   async loginAdmin(username, password) {
     const res = await api.post("/auth/admin/login", { username, password });

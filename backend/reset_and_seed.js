@@ -411,6 +411,16 @@ async function run() {
     }
   ]);
 
+  // 8. ไรเดอร์เริ่มต้น (Riders)
+  console.log('🛵 กำลังเพิ่มไรเดอร์ทดสอบ...');
+  const riderPw = await hashPassword('rider1234');
+  await db('MERCHANT_RIDERS').insert([
+    { id: 1, username: 'rider1', password_hash: riderPw, full_name: 'สมศักดิ์ ไรเดอร์ซิ่ง', phone: '089-111-2222', is_active: true, merchant_id: 1 },
+    { id: 2, username: 'rider2', password_hash: riderPw, full_name: 'มานะ ส่งไว', phone: '089-333-4444', is_active: true, merchant_id: 2 },
+    { id: 3, username: 'rider_jenny', password_hash: riderPw, full_name: 'สายฟ้า เดลิเวอรี่ (เชฟเจนนี่)', phone: '089-555-6666', is_active: true, merchant_id: 6 },
+    { id: 4, username: 'rider', password_hash: riderPw, full_name: 'ไรเดอร์หลัง มจพ.', phone: '089-777-8888', is_active: true, merchant_id: 6 }
+  ]);
+
   console.log('🎉 Reset and Seed เสร็จสมบูรณ์!');
   console.log(`- ซอย: ${sois.length}`);
   console.log(`- หอพัก: ${dorms.length}`);
