@@ -48,6 +48,7 @@ export default function MerchantPage() {
   const [feeDraft, setFeeDraft] = useState({ soi_id: "", fee: "" });
   const [passwordDraft, setPasswordDraft] = useState({ current_password: "", new_password: "" });
   const [passwordMessage, setPasswordMessage] = useState("");
+  const [savingStoreImage, setSavingStoreImage] = useState(false);
 
   const refresh = useCallback(async () => {
     if (getAuthSession()?.role !== "MERCHANT") return;
@@ -215,6 +216,23 @@ export default function MerchantPage() {
     try { await apiRequest("/merchant-management/status", { method: "PATCH", body: { is_open: !profile?.is_open } }); await refresh(); }
     catch (e) { setError(e.message); }
   }
+  async function changeStoreCover(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setSavingStoreImage(true); setError("");
+    try {
+      const formData = new FormData();
+      formData.append("image", file);
+      const upload = apiData(await apiRequest("/upload/store-image", { method: "POST", body: formData }));
+      await apiRequest("/merchant-management/profile", { method: "PUT", body: {
+        store_name: profile?.store_name, location: profile?.location,
+        promptpay_id: profile?.promptpay_id, store_image_url: upload.imageUrl,
+      }});
+      await refresh();
+    } catch (e) { setError(e.message); }
+    finally { setSavingStoreImage(false); }
+  }
   async function saveMenu(e) {
     e.preventDefault();
     setSavingMenu(true);
@@ -323,7 +341,7 @@ export default function MerchantPage() {
     </>}
     {screen === "delivery" && <><TopBar title="ค่าจัดส่ง" onBack={() => setScreen("home")}/><form className="delivery-fee-box" onSubmit={saveFee}><h3>กำหนดค่าจัดส่งตามซอย</h3><select required value={feeDraft.soi_id} onChange={(e)=>setFeeDraft({...feeDraft,soi_id:e.target.value})}><option value="">เลือกซอย</option>{sois.map((s)=><option value={s.id} key={s.id}>{s.name}</option>)}</select><input required type="number" min="0" step="0.01" placeholder="ค่าจัดส่ง (บาท)" value={feeDraft.fee} onChange={(e)=>setFeeDraft({...feeDraft,fee:e.target.value})}/><button className="primary-btn">บันทึกค่าจัดส่ง</button></form>{fees.map((f)=><div className="merchant-order-card" key={f.id}>{f.soi_name}<strong>{money(f.fee)} ฿</strong></div>)}</>}
     {screen === "chat" && <><TopBar title="แชทออเดอร์" subtitle={selectedOrder?.id} onBack={() => setScreen("orders")}/><div className="chat-panel"><div ref={chatMessagesRef} className="chat-messages short">{messages.map((m)=><div className={`chat-bubble ${m.is_merchant_sender ? "me" : "store"}`} key={m.id}>{m.content_text}</div>)}{!messages.length && <EmptyState title="ยังไม่มีข้อความ" text="เริ่มสนทนากับลูกค้าของออเดอร์นี้"/>}</div><form className="chat-compose" onSubmit={sendChat}><input value={chatText} onChange={(e)=>setChatText(e.target.value)} placeholder="เขียนข้อความ..."/><button>➤</button></form></div></>}
-    {screen === "profile" && <><TopBar title="ข้อมูลร้าน" onBack={() => setScreen("home")}/><div className="merchant-order-card"><h3>{profile?.store_name}</h3><p>{profile?.location || "ยังไม่ได้ระบุที่ตั้ง"}</p><p>{profile?.promptpay_id || "ยังไม่ได้ระบุ PromptPay"}</p><p>{profile?.is_approved ? "อนุมัติแล้ว" : "รอการอนุมัติจากผู้ดูแล"}</p><button onClick={async()=>{const next=window.prompt("ชื่อร้าน",profile?.store_name||"");if(!next)return;try{await apiRequest("/merchant-management/profile",{method:"PUT",body:{store_name:next,location:profile?.location,promptpay_id:profile?.promptpay_id,store_image_url:profile?.store_image_url}});await refresh();}catch(e){setError(e.message);}}}>แก้ไขชื่อร้าน</button></div><form className="merchant-order-card" onSubmit={changePassword}><h3>ตั้งรหัสผ่านใหม่</h3><input required type="password" autoComplete="current-password" placeholder="รหัสผ่านปัจจุบัน" value={passwordDraft.current_password} onChange={(e)=>setPasswordDraft({...passwordDraft,current_password:e.target.value})}/><input required minLength={8} type="password" autoComplete="new-password" placeholder="รหัสผ่านใหม่ (อย่างน้อย 8 ตัว)" value={passwordDraft.new_password} onChange={(e)=>setPasswordDraft({...passwordDraft,new_password:e.target.value})}/><button className="primary-btn">เปลี่ยนรหัสผ่าน</button>{passwordMessage&&<p role="status">{passwordMessage}</p>}</form><div className="merchant-order-card"><button onClick={()=>{clearAuthSession();setSession(null);}}>ออกจากระบบ</button></div></>}
+    {screen === "profile" && <><TopBar title="ข้อมูลร้าน" onBack={() => setScreen("home")}/><div className="merchant-order-card"><div className="store-cover-edit">{profile?.store_image_url?<img src={profile.store_image_url} alt="รูปปกร้าน"/>:<div className="store-cover-placeholder">🏪<span>ยังไม่มีรูปปกร้าน</span></div>}<label className="primary-btn store-cover-edit-button">{savingStoreImage?"กำลังอัปโหลด…":"แก้ไขรูปปกร้าน"}<input type="file" accept="image/*" onChange={changeStoreCover} disabled={savingStoreImage}/></label></div><h3>{profile?.store_name}</h3><p>{profile?.location || "ยังไม่ได้ระบุที่ตั้ง"}</p><p>{profile?.promptpay_id || "ยังไม่ได้ระบุ PromptPay"}</p><p>{profile?.is_approved ? "อนุมัติแล้ว" : "รอการอนุมัติจากผู้ดูแล"}</p><button onClick={async()=>{const next=window.prompt("ชื่อร้าน",profile?.store_name||"");if(!next)return;try{await apiRequest("/merchant-management/profile",{method:"PUT",body:{store_name:next,location:profile?.location,promptpay_id:profile?.promptpay_id,store_image_url:profile?.store_image_url}});await refresh();}catch(e){setError(e.message);}}}>แก้ไขชื่อร้าน</button></div><form className="merchant-order-card" onSubmit={changePassword}><h3>ตั้งรหัสผ่านใหม่</h3><input required type="password" autoComplete="current-password" placeholder="รหัสผ่านปัจจุบัน" value={passwordDraft.current_password} onChange={(e)=>setPasswordDraft({...passwordDraft,current_password:e.target.value})}/><input required minLength={8} type="password" autoComplete="new-password" placeholder="รหัสผ่านใหม่ (อย่างน้อย 8 ตัว)" value={passwordDraft.new_password} onChange={(e)=>setPasswordDraft({...passwordDraft,new_password:e.target.value})}/><button className="primary-btn">เปลี่ยนรหัสผ่าน</button>{passwordMessage&&<p role="status">{passwordMessage}</p>}</form><div className="merchant-order-card"><button onClick={()=>{clearAuthSession();setSession(null);}}>ออกจากระบบ</button></div></>}
     <BottomNav tone="merchant" active={screen} onChange={(key)=>setScreen(key)} items={[{key:"home",label:"หน้าหลัก",icon:"⌂"},{key:"orders",label:"ออเดอร์",icon:"▣",badge:unreadMessageTotal},{key:"menu",label:"เมนู",icon:"☷"},{key:"delivery",label:"จัดส่ง",icon:"🛵"},{key:"profile",label:"ร้าน",icon:"♙"}]}/>
   </div></MobileShell>;
 }
