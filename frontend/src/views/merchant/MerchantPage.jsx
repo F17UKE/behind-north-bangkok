@@ -99,7 +99,7 @@ export default function MerchantPage() {
 
 function MerchantHome({ orders, go, query, setQuery }) {
   return <>
-    <div className="merchant-profile"><div className="avatar peach">👤</div><div><b>แอดมินร้านครัวหลังมอ</b><small>ครัวหลังมอ · เปิดร้าน (Backend Ready)</small></div><button>☰</button></div>
+    <div className="merchant-profile"><div className="avatar peach">👤</div><div><b>ร้านตามสั่ง by เชฟเจนนี่</b><small>ตามสั่ง by เชฟเจนนี่ · เปิดร้าน (Backend Ready)</small></div><button>☰</button></div>
     <SearchBar value={query} onChange={setQuery} placeholder="Search..." />
     <div className="merchant-quick"><button>All</button><button>Unread <span>0</span></button><button>Favorites</button><button>Quick Reply</button></div>
     <div className="merchant-stats"><div><b>24</b><small>Order Today</small><em>+XX%</em></div><div><b>1,560</b><small>Revenue Today</small><em>+XX%</em></div></div>

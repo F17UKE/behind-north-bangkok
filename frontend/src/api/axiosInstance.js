@@ -1,8 +1,14 @@
 // frontend/src/api/axiosInstance.js
 
-const API_URL = 
-  (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_API_URL) || 
-  "http://localhost:5000/api";
+export function getApiBaseUrl() {
+  if (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+  if (typeof window !== "undefined" && window.location?.hostname) {
+    return `http://${window.location.hostname}:5000/api`;
+  }
+  return "http://localhost:5000/api";
+}
 
 /**
  * ดึง Token ของ Role ที่ระบุจาก localStorage
@@ -46,6 +52,7 @@ export async function apiRequest(path, options = {}, role = "CUSTOMER") {
     ...(options.headers || {})
   };
 
+  const API_URL = getApiBaseUrl();
   const response = await fetch(`${API_URL}${path}`, {
     ...options,
     headers

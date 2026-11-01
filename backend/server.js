@@ -13,7 +13,7 @@ const server = http.createServer(app);
 app.use(helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" } // อนุญาตให้โหลดรูปภาพข้าม Origin ได้
 }));
-app.use(cors({ origin: 'http://localhost:3000' }));
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
 // 2. Rate Limiting Middlewares (ป้องกัน Brute Force & DDoS)
@@ -66,7 +66,7 @@ app.use(errorHandler);    // จัดการ Validation Errors และ Syst
 
 // 6. ตั้งค่า Socket.io สำหรับระบบ Real-time Chat และ Notification
 const io = new Server(server, {
-    cors: { origin: 'http://localhost:3000' }
+    cors: { origin: true, credentials: true }
 });
 
 // แชร์ instance io ให้ Controller อื่นๆ เรียกใช้งานผ่าน req.app.get('io')

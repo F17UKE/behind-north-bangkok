@@ -3,15 +3,15 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { BottomNav, MobileShell, SearchBar, TopBar, EmptyState } from "../../components/AppShell";
-import { customerFoods, initialOrders, statusLabel } from "../../data/mockData";
+import { customerFoods, initialOrders, statusLabel, dormitories, sois } from "../../data/mockData";
 import { authApi } from "../../api/authApi";
 import { merchantApi } from "../../api/merchantApi";
 import { orderApi } from "../../api/orderApi";
 import "./CustomerStorefront.css";
 
-const categories = ["All", "Coffee & Tea", "On Order", "More"];
+const categories = ["All", "อาหารตามสั่ง", "หมูกระทะ", "ก๋วยเตี๋ยว", "อาหารจานเดียว"];
 const defaultMenuGallery = customerFoods.flatMap((store) => store.menu.map((item) => ({ ...item, storeName: store.name, store })));
-const heroMenuGallery = defaultMenuGallery.filter((item) => [101, 501, 601, 701, 801, 901, 1001, 1101, 1201, 1501].includes(item.id));
+const heroMenuGallery = defaultMenuGallery.slice(0, 10);
 const customizationOptions = {
   rice: [{ id: "fried-egg", name: "เพิ่มไข่ดาว", price: 12 }, { id: "omelet", name: "เพิ่มไข่เจียว", price: 15 }, { id: "extra-meat", name: "เพิ่มเนื้อสัตว์", price: 20 }, { id: "extra-rice", name: "เพิ่มข้าว", price: 10 }, { id: "crispy-garlic", name: "กระเทียมเจียว", price: 5 }],
   noodles: [{ id: "extra-noodle", name: "เพิ่มเส้น", price: 10 }, { id: "extra-meat", name: "เพิ่มเนื้อสัตว์", price: 20 }, { id: "meatball", name: "เพิ่มลูกชิ้น", price: 15 }, { id: "egg", name: "เพิ่มไข่ต้ม", price: 12 }, { id: "crispy-garlic", name: "กระเทียมเจียว", price: 5 }],
@@ -42,6 +42,8 @@ export default function CustomerPage() {
   const [customNote, setCustomNote] = useState("");
   const [customQty, setCustomQty] = useState(1);
   const [apiNotice, setApiNotice] = useState("");
+  const [currentDorm, setCurrentDorm] = useState(dormitories[0]);
+  const [showDormPicker, setShowDormPicker] = useState(false);
   const [chatMessages, setChatMessages] = useState([
     { from: "store", text: "สวัสดีครับ 👋" },
     { from: "me", text: "ออเดอร์ถึงไหนแล้วครับ" },
@@ -69,19 +71,19 @@ export default function CustomerPage() {
       const data = await merchantApi.getMerchants();
       if (Array.isArray(data) && data.length > 0) {
         const merged = data.map((store, i) => {
-          const fallback = customerFoods[i % customerFoods.length];
+          const fallback = customerFoods.find(cf => cf.id === store.id || cf.name.toLowerCase() === store.store_name.toLowerCase()) || customerFoods[i % customerFoods.length];
           return {
             id: store.id,
             name: store.store_name,
-            category: "อาหารตามสั่ง",
-            rating: 4.8,
-            price: 50,
-            emoji: "🍛",
-            photo: (store.store_image_url && store.store_image_url.startsWith("http")) ? store.store_image_url : fallback.photo,
-            delivery: "20–30 นาที",
-            fee: "ส่ง ฿10",
-            tags: ["ร้านเปิดบริการ", "ระบบหลังบ้าน"],
-            menu: fallback.menu || []
+            category: fallback?.category || "อาหารตามสั่ง",
+            rating: fallback?.rating || 4.8,
+            price: fallback?.price || 50,
+            emoji: fallback?.emoji || "🍛",
+            photo: (store.store_image_url && store.store_image_url.startsWith("http")) ? store.store_image_url : fallback?.photo || "/store-kitchen.webp",
+            delivery: fallback?.delivery || "20–30 นาที",
+            fee: fallback?.fee || "ส่ง ฿10",
+            tags: fallback?.tags || ["เปิดบริการ"],
+            menu: fallback?.menu || []
           };
         });
         setStoreList(merged);
@@ -120,7 +122,7 @@ export default function CustomerPage() {
   const filtered = useMemo(() => storeList.filter((food) => {
     const menuNames = food.menu ? food.menu.map((item) => item.name).join(" ") : "";
     const matchesSearch = `${food.name} ${food.category} ${menuNames}`.toLowerCase().includes(search.toLowerCase());
-    const matchesCategory = category === "All" || (category === "Coffee & Tea" && food.category.includes("เครื่องดื่ม")) || category === "On Order" || category === "More";
+    const matchesCategory = category === "All" || food.category?.includes(category);
     return matchesSearch && matchesCategory;
   }), [storeList, search, category]);
 
@@ -236,7 +238,7 @@ export default function CustomerPage() {
     // เตรียม Local Order สำรอง
     let newOrder = {
       id: `#ORD${String(orders.length + 2).padStart(3, "0")}`,
-      store: cart[0]?.storeName || selectedStore.name || "ครัวหลังมอ",
+      store: cart[0]?.storeName || selectedStore.name || "ตามสั่ง by เชฟเจนนี่",
       items: itemsDescription,
       total,
       status: "PENDING_PAYMENT",
@@ -249,8 +251,8 @@ export default function CustomerPage() {
       if (authApi.isLoggedIn("CUSTOMER")) {
         const orderPayload = {
           merchant_id: Number(selectedStore.id) || 1,
-          dormitory_id: 1,
-          room_number: "หอพักหลังมอ 101",
+          dormitory_id: currentDorm?.id || 1,
+          room_number: `ห้อง 101 (${currentDorm?.name || "หอพัก"})`,
           items: cart.map(item => ({
             menu_item_id: Number(item.id) || 1,
             quantity: Number(item.qty) || 1,
@@ -327,7 +329,7 @@ export default function CustomerPage() {
       <div key={screen} className="mobile-page customer-page-shell screen-enter">
         {apiNotice && <div className="api-toast-notice">{apiNotice}</div>}
 
-        {screen === "home" && <CustomerHome search={search} setSearch={setSearch} category={category} setCategory={setCategory} foods={filtered} menu={defaultMenuGallery} featured={heroMenuGallery[heroIndex] || defaultMenuGallery[0]} heroIndex={heroIndex} setHeroIndex={setHeroIndex} heroCount={heroMenuGallery.length || 1} cartCount={cartCount} onStore={openStore} onCart={() => setScreen("basket")} onOrders={() => setScreen("recent")} onProfile={() => setScreen("profile")} />}
+        {screen === "home" && <CustomerHome search={search} setSearch={setSearch} category={category} setCategory={setCategory} foods={filtered} menu={defaultMenuGallery} featured={heroMenuGallery[heroIndex] || defaultMenuGallery[0]} heroIndex={heroIndex} setHeroIndex={setHeroIndex} heroCount={heroMenuGallery.length || 1} cartCount={cartCount} currentDorm={currentDorm} onOpenDormPicker={() => setShowDormPicker(true)} onStore={openStore} onCart={() => setScreen("basket")} onOrders={() => setScreen("recent")} onProfile={() => setScreen("profile")} />}
         {screen === "store" && <CustomerStore store={selectedStore} cartCount={cartCount} onBack={() => setScreen("home")} onCustomize={openCustomization} onBasket={() => setScreen("basket")} />}
         {screen === "basket" && <Basket cart={cart} subtotal={subtotal} deliveryFee={deliveryFee} total={total} changeQty={changeQty} onBack={() => setScreen("store")} onNext={() => setScreen("update")} />}
         {screen === "update" && <UpdateBasket cart={cart} total={total} savedPlace={savedPlace} setSavedPlace={setSavedPlace} changeQty={changeQty} onBack={() => setScreen("basket")} onNext={() => setScreen("place")} />}
@@ -343,16 +345,21 @@ export default function CustomerPage() {
       <BottomNav tone="orange" active={screen === "profile" ? "profile" : ["recent", "delivery"].includes(screen) ? "order" : "home"} onChange={nav} items={[{ key: "home", label: "หน้าแรก", icon: "⌂" }, { key: "order", label: "ออเดอร์", icon: "▣" }, { key: "profile", label: "โปรไฟล์", icon: "♙" }, { key: "cart", label: cartCount ? `ตะกร้า (${cartCount})` : "ตะกร้า", icon: "🛒" }]} />
       <button className="floating-cart-button" onClick={() => setScreen("basket")}>🛒 {cartCount ? `${cartCount} · ${total} ฿` : "0 ฿"}</button>
       {customItem && <CustomizationModal item={customItem} options={customizationOptions[customItem.customizationType] || customizationOptions.rice} selected={customAddons} setSelected={setCustomAddons} note={customNote} setNote={setCustomNote} qty={customQty} setQty={setCustomQty} onClose={() => setCustomItem(null)} onConfirm={confirmCustomization} />}
+      {showDormPicker && <DormitoryPickerModal currentDorm={currentDorm} onSelect={(dorm) => { setCurrentDorm(dorm); setShowDormPicker(false); }} onClose={() => setShowDormPicker(false)} />}
     </MobileShell>
   );
 }
 
-function CustomerHome({ search, setSearch, category, setCategory, foods, menu, featured, heroIndex, setHeroIndex, heroCount, cartCount, onStore, onCart, onOrders, onProfile }) {
+function CustomerHome({ search, setSearch, category, setCategory, foods, menu, featured, heroIndex, setHeroIndex, heroCount, cartCount, currentDorm, onOpenDormPicker, onStore, onCart, onOrders, onProfile }) {
   return <div className="customer-home">
     <div className="storefront-progress" aria-hidden="true" />
     <header className="storefront-nav">
       <Link className="storefront-brand" href="/customer" aria-label="Behind North หน้าแรก"><span>BN</span><b>Behind North</b></Link>
-      <div className="storefront-address"><span className="address-pin">⌖</span><div><small>จัดส่งถึง</small><b>หอพักมหาวิทยาลัย มจพ.</b></div><span className="address-chevron">⌄</span></div>
+      <div className="storefront-address" onClick={onOpenDormPicker} style={{ cursor: "pointer" }}>
+        <span className="address-pin">⌖</span>
+        <div><small>จัดส่งถึง ({currentDorm?.soi || "ซอย 11"})</small><b>{currentDorm?.name || "S9 Residence"}</b></div>
+        <span className="address-chevron">⌄</span>
+      </div>
       <div className="storefront-search"><SearchBar value={search} onChange={setSearch} placeholder="ค้นหาร้านหรือเมนู" /></div>
       <nav className="storefront-links"><button onClick={onOrders}>รายการสั่งซื้อ</button><button onClick={onProfile}>บัญชีของฉัน</button></nav>
       <button className="storefront-cart" onClick={onCart}><span>ตะกร้าของฉัน</span><b>🛒</b>{cartCount > 0 && <i>{cartCount}</i>}</button>
@@ -368,7 +375,7 @@ function CustomerHome({ search, setSearch, category, setCategory, foods, menu, f
 
     <section className="discovery-section" data-scroll-reveal>
       <div className="section-heading"><div><span className="section-kicker">เลือกตามใจ</span><h2>วันนี้อยากกินอะไร?</h2></div><a href="#popular">สำรวจร้านทั้งหมด <span>→</span></a></div>
-      <div className="customer-categories">{categories.map((c, i) => <button className={category === c ? "active" : ""} key={c} onClick={() => setCategory(c)}><span>{["✳", "☕", "↻", "＋"][i]}</span>{c === "All" ? "ทั้งหมด" : c === "Coffee & Tea" ? "กาแฟและชา" : c === "On Order" ? "สั่งบ่อย" : "เพิ่มเติม"}</button>)}</div>
+      <div className="customer-categories">{categories.map((c, i) => <button className={category === c ? "active" : ""} key={c} onClick={() => setCategory(c)}><span>{["✳", "🍳", "🥓", "🍜", "🍱"][i] || "🍽️"}</span>{c === "All" ? "ทั้งหมด" : c}</button>)}</div>
     </section>
 
     <section className="discovery-section popular-section" id="popular" data-scroll-reveal><div className="section-heading"><div><span className="section-kicker">คัดมาให้แล้ว</span><h2>ร้านยอดนิยมใกล้คุณ</h2></div><a href="#popular">ดูร้านทั้งหมด <span>→</span></a></div>
@@ -383,7 +390,7 @@ function CustomerHome({ search, setSearch, category, setCategory, foods, menu, f
       </article>)}</div>
     </section>
 
-    <section className="repeat-order" data-scroll-reveal><div className="repeat-icon">↻</div><div><span className="section-kicker">อยากกินอีกแล้ว</span><b>สั่งร้านเดิมอีกครั้ง</b><small>ครัวหลังมอ · ข้าวกะเพราไก่ · 90 บาท</small></div><button onClick={() => foods[0] && onStore(foods[0])}>สั่งซ้ำ <span>→</span></button></section>
+    <section className="repeat-order" data-scroll-reveal><div className="repeat-icon">↻</div><div><span className="section-kicker">อยากกินอีกแล้ว</span><b>สั่งร้านเดิมอีกครั้ง</b><small>{foods[0]?.name || "ตามสั่ง by เชฟเจนนี่"} · {foods[0]?.menu?.[0]?.name || "ข้าวผัดอเมริกัน"} · 60 บาท</small></div><button onClick={() => foods[0] && onStore(foods[0])}>สั่งซ้ำ <span>→</span></button></section>
   </div>;
 }
 
@@ -566,6 +573,73 @@ function CustomerAuth({ mode, onBack, onSuccess, onSignUp, onLogin }) {
         </button>
       </form>
       <div className="social-row"><button type="button">G Google</button><button type="button">● Line</button></div>
+    </div>
+  );
+}
+
+function DormitoryPickerModal({ currentDorm, onSelect, onClose }) {
+  const [q, setQ] = useState("");
+  const [selectedSoi, setSelectedSoi] = useState("All");
+
+  const filteredDorms = useMemo(() => {
+    return dormitories.filter((d) => {
+      const matchName = d.name.toLowerCase().includes(q.toLowerCase());
+      const matchSoi = selectedSoi === "All" || d.soi === selectedSoi;
+      return matchName && matchSoi;
+    });
+  }, [q, selectedSoi]);
+
+  return (
+    <div className="customize-overlay" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <section className="customize-dialog" role="dialog" style={{ maxHeight: "80vh", display: "flex", flexDirection: "column" }}>
+        <button className="customize-close" onClick={onClose} aria-label="ปิด">×</button>
+        <div style={{ paddingBottom: "8px" }}>
+          <h2 style={{ fontSize: "18px", fontWeight: "bold" }}>📍 เลือกหอพักสำหรับจัดส่ง</h2>
+          <small style={{ color: "#718096" }}>มีข้อมูลหอพัก 47 แห่งรอบมหาวิทยาลัย มจพ.</small>
+        </div>
+
+        <input 
+          placeholder="🔍 ค้นหาชื่อหอพัก..." 
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid #e2e8f0", margin: "8px 0" }}
+        />
+
+        <div className="filter-scroll" style={{ display: "flex", gap: "6px", overflowX: "auto", paddingBottom: "8px" }}>
+          <button className={selectedSoi === "All" ? "active" : ""} onClick={() => setSelectedSoi("All")}>ทุกซอย</button>
+          {sois.map((s) => (
+            <button key={s.id} className={selectedSoi === s.name ? "active" : ""} onClick={() => setSelectedSoi(s.name)}>
+              {s.name}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: "6px", margin: "8px 0" }}>
+          {filteredDorms.map((d) => (
+            <button 
+              key={d.id}
+              onClick={() => onSelect(d)}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "10px 12px",
+                borderRadius: "8px",
+                border: currentDorm?.id === d.id ? "2px solid #ed8936" : "1px solid #edf2f7",
+                background: currentDorm?.id === d.id ? "#fffaf0" : "#fff",
+                cursor: "pointer",
+                textAlign: "left"
+              }}
+            >
+              <div>
+                <b style={{ fontSize: "14px", display: "block" }}>{d.name}</b>
+                <small style={{ color: "#718096" }}>{d.soi}</small>
+              </div>
+              {currentDorm?.id === d.id ? <span style={{ color: "#ed8936", fontWeight: "bold" }}>✓ เลือกอยู่</span> : <span style={{ color: "#a0aec0" }}>เลือก ›</span>}
+            </button>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }
