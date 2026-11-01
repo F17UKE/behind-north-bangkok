@@ -1,22 +1,100 @@
+// frontend/src/api/axiosInstance.js
+
 const API_URL = 
   (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_API_URL) || 
-  (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) || 
   "http://localhost:5000/api";
 
-export async function apiRequest(path, options = {}) {
+/**
+ * ดึง Token ของ Role ที่ระบุจาก localStorage
+ */
+export function getToken(role = "CUSTOMER") {
+  if (typeof window === "undefined") return null;
+  const roleKey = `${role.toLowerCase()}_token`;
+  return localStorage.getItem(roleKey) || localStorage.getItem("token") || null;
+}
+
+/**
+ * บันทึก Token ลง localStorage
+ */
+export function setToken(token, role = "CUSTOMER") {
+  if (typeof window === "undefined") return;
+  const roleKey = `${role.toLowerCase()}_token`;
+  localStorage.setItem(roleKey, token);
+  localStorage.setItem("token", token);
+}
+
+/**
+ * ลบ Token
+ */
+export function clearToken(role = "CUSTOMER") {
+  if (typeof window === "undefined") return;
+  const roleKey = `${role.toLowerCase()}_token`;
+  localStorage.removeItem(roleKey);
+  localStorage.removeItem("token");
+}
+
+/**
+ * ส่ง Request ไปยัง Backend API
+ */
+export async function apiRequest(path, options = {}, role = "CUSTOMER") {
+  const token = getToken(role);
+  const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
+
+  const headers = {
+    ...(isFormData ? {} : { "Content-Type": "application/json" }),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(options.headers || {})
+  };
+
   const response = await fetch(`${API_URL}${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {})
-    },
-    ...options
+    ...options,
+    headers
   });
 
-  if (!response.ok) {
-    const message = await response.text().catch(() => "");
-    throw new Error(message || `API request failed: ${response.status}`);
+  const contentType = response.headers.get("content-type") || "";
+  let data = null;
+
+  if (contentType.includes("application/json")) {
+    data = await response.json().catch(() => null);
+  } else {
+    data = await response.text().catch(() => null);
   }
 
-  if (response.status === 204) return null;
-  return response.json();
+  if (!response.ok) {
+    const errorMsg = 
+      data?.message || 
+      data?.error || 
+      (typeof data === "string" ? data : `API Error: ${response.status}`);
+    const error = new Error(errorMsg);
+    error.status = response.status;
+    error.details = data?.details || null;
+    throw error;
+  }
+
+  return data;
 }
+
+export const api = {
+  get: (path, options = {}, role) => apiRequest(path, { ...options, method: "GET" }, role),
+  post: (path, body, options = {}, role) => 
+    apiRequest(path, { 
+      ...options, 
+      method: "POST", 
+      body: body instanceof FormData ? body : JSON.stringify(body) 
+    }, role),
+  put: (path, body, options = {}, role) => 
+    apiRequest(path, { 
+      ...options, 
+      method: "PUT", 
+      body: body instanceof FormData ? body : JSON.stringify(body) 
+    }, role),
+  patch: (path, body, options = {}, role) => 
+    apiRequest(path, { 
+      ...options, 
+      method: "PATCH", 
+      body: body ? (body instanceof FormData ? body : JSON.stringify(body)) : undefined 
+    }, role),
+  delete: (path, options = {}, role) => apiRequest(path, { ...options, method: "DELETE" }, role),
+};
+
+export default api;

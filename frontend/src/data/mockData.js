@@ -56,12 +56,16 @@ export const customerFoods = [
   ].map((shop) => ({ ...shop, menu: shop.items.map(([name, price, image], index) => ({ id: shop.id * 100 + index + 1, name, price, emoji: shop.emoji, image, description: `${name} ปรุงสดใหม่ตามสั่ง`, customizationType: shop.type })) })),
 ];
 
+export const stores = customerFoods;
+
 export const customerMenu = [
   { id: 1, name: "ข้าวกะเพราไก่", price: 45, emoji: "🌶️" },
   { id: 2, name: "ข้าวไข่เจียว", price: 35, emoji: "🍳" },
   { id: 3, name: "กะเพราหมูสับ", price: 45, emoji: "🥘" },
   { id: 4, name: "ไข่ดาว", price: 10, emoji: "🍳" },
 ];
+
+export const menuItems = customerMenu;
 
 export const initialOrders = [
   { id: "#ORD001", store: "ครัวหลังมอ", items: ["ข้าวกะเพราไก่ x1", "ข้าวไข่เจียว x1"], total: 90, status: "PREPARING", date: "Today, 10:25" },
@@ -84,10 +88,14 @@ export const adminUsers = [
 ];
 
 export const statusLabel = {
+  PENDING_PAYMENT: "รอชำระเงิน",
+  PAID: "ชำระเงินแล้ว",
   PENDING_ACCEPT: "รอร้านรับออเดอร์",
   PREPARING: "กำลังเตรียมอาหาร",
   READY_FOR_DELIVERY: "พร้อมจัดส่ง",
   IN_DELIVERY: "กำลังจัดส่ง",
   COMPLETED: "เสร็จสิ้น",
   CANCELLED: "ยกเลิก",
+  CANCELLED_BY_CUSTOMER: "ยกเลิกโดยลูกค้า",
+  CANCELLED_BY_MERCHANT: "ปฏิเสธโดยร้านค้า",
 };
