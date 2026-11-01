@@ -99,6 +99,31 @@ export const orderApi = {
   async completeEntireOrder(orderId) {
     const res = await api.put(`/merchants/kds/orders/${orderId}/complete-all`, {}, {}, "MERCHANT");
     return res?.data || res;
+  },
+
+  // --- Real-time Chat Operations ---
+  // ดึงประวัติแชทของออเดอร์
+  async getChatHistory(orderId, role = "CUSTOMER") {
+    const res = await api.get(`/orders/${orderId}/messages`, {}, role);
+    return Array.isArray(res) ? res : (res?.data || []);
+  },
+
+  // ส่งข้อความแชท
+  async sendMessage(orderId, contentText, role = "CUSTOMER", messageType = "TEXT") {
+    const res = await api.post(`/orders/${orderId}/messages`, { contentText, messageType }, {}, role);
+    return res?.data || res;
+  },
+
+  // อัปเดตสถานะอ่านแล้ว (Watermark)
+  async markAsRead(orderId, messageId, role = "CUSTOMER") {
+    const res = await api.put(`/orders/${orderId}/messages/read`, { message_id: messageId }, {}, role);
+    return res?.data || res;
+  },
+
+  // ดึงจำนวนข้อความที่ยังไม่ได้อ่าน
+  async getUnreadCount(role = "CUSTOMER") {
+    const res = await api.get(`/orders/unread-messages-count`, {}, role);
+    return res || { totalUnread: 0, byOrder: {} };
   }
 };
 

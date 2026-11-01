@@ -234,7 +234,7 @@ export const adminUsers = [
 export const statusLabel = {
   PENDING_PAYMENT: "รอชำระเงิน",
   PAID: "ชำระเงินแล้ว",
-  PENDING_ACCEPT: "รอร้านรับออเดอร์",
+  PENDING_ACCEPT: "รอร้านค้ารับออเดอร์",
   PREPARING: "กำลังเตรียมอาหาร",
   READY_FOR_DELIVERY: "พร้อมจัดส่ง",
   IN_DELIVERY: "กำลังจัดส่ง",
@@ -242,4 +242,6 @@ export const statusLabel = {
   CANCELLED: "ยกเลิก",
   CANCELLED_BY_CUSTOMER: "ยกเลิกโดยลูกค้า",
   CANCELLED_BY_MERCHANT: "ปฏิเสธโดยร้านค้า",
+  REJECTED_BY_MERCHANT: "ปฏิเสธโดยร้านค้า",
+  CANCELLED_BY_TIMEOUT: "ยกเลิก (หมดเวลา)",
 };

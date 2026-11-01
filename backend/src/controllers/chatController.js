@@ -14,6 +14,69 @@ const checkOrderAccess = async (orderId, user) => {
   return { allowed: false, notFound: false };
 };
 
+// GET /api/orders/unread-messages-count
+exports.getUnreadCount = async (req, res) => {
+  try {
+    const user = req.user;
+    let orders = [];
+
+    if (user.role === 'CUSTOMER') {
+      orders = await knex('ORDERS')
+        .where('customer_id', user.id)
+        .whereNotIn('status', ['COMPLETED', 'CANCELLED', 'CANCELLED_BY_CUSTOMER', 'CANCELLED_BY_TIMEOUT', 'REJECTED_BY_MERCHANT'])
+        .select('id', 'customer_last_read_message_id');
+    } else if (user.role === 'MERCHANT') {
+      orders = await knex('ORDERS')
+        .where('merchant_id', user.id)
+        .whereNotIn('status', ['COMPLETED', 'CANCELLED', 'CANCELLED_BY_CUSTOMER', 'CANCELLED_BY_TIMEOUT', 'REJECTED_BY_MERCHANT'])
+        .select('id', 'merchant_last_read_message_id');
+    } else if (user.role === 'RIDER') {
+      orders = await knex('ORDERS')
+        .where('rider_id', user.id)
+        .whereNotIn('status', ['COMPLETED', 'CANCELLED', 'CANCELLED_BY_CUSTOMER', 'CANCELLED_BY_TIMEOUT', 'REJECTED_BY_MERCHANT'])
+        .select('id', 'merchant_last_read_message_id');
+    }
+
+    if (orders.length === 0) {
+      return res.status(200).json({ success: true, totalUnread: 0, byOrder: {} });
+    }
+
+    const orderIds = orders.map(o => o.id);
+    const messages = await knex('MESSAGES')
+      .whereIn('order_id', orderIds)
+      .select('id', 'order_id', 'is_merchant_sender', 'sender_sub_role');
+
+    const byOrder = {};
+    let totalUnread = 0;
+
+    for (const order of orders) {
+      const orderMsgs = messages.filter(m => m.order_id === order.id);
+      let unreadInOrder = 0;
+
+      if (user.role === 'CUSTOMER') {
+        const lastRead = order.customer_last_read_message_id || 0;
+        unreadInOrder = orderMsgs.filter(m => m.is_merchant_sender && m.id > lastRead).length;
+      } else if (user.role === 'MERCHANT') {
+        const lastRead = order.merchant_last_read_message_id || 0;
+        unreadInOrder = orderMsgs.filter(m => !m.is_merchant_sender && m.id > lastRead).length;
+      } else if (user.role === 'RIDER') {
+        const lastRead = order.merchant_last_read_message_id || 0;
+        unreadInOrder = orderMsgs.filter(m => m.sender_sub_role !== 'RIDER' && m.id > lastRead).length;
+      }
+
+      if (unreadInOrder > 0) {
+        byOrder[order.id] = unreadInOrder;
+        totalUnread += unreadInOrder;
+      }
+    }
+
+    res.status(200).json({ success: true, totalUnread, byOrder });
+  } catch (error) {
+    console.error('Get unread count error:', error);
+    res.status(500).json({ success: false, error: 'Failed to get unread count' });
+  }
+};
+
 // GET /api/orders/:order_id/messages
 exports.getChatHistory = async (req, res) => {
   try {
@@ -90,13 +153,25 @@ exports.sendMessage = async (req, res) => {
       orderId: order_id
     });
 
-    // ส่ง Socket.io กระจายข้อความไปในห้อง
+    // ส่ง Socket.io กระจายข้อความไปในห้อง และส่ง Notification ไปยังผู้รับ
     const io = req.app.get('io');
     if (io) {
-      io.to(`order_${order_id}`).emit('new_message', {
+      const messagePayload = {
         ...newMessage,
+        orderId: Number(order_id),
+        order_id: Number(order_id),
         role: senderSubRole || (isMerchantSender ? 'STORE' : 'CUSTOMER')
-      });
+      };
+      io.to(`order_${order_id}`).emit('new_message', messagePayload);
+      if (access.order?.merchant_id) {
+        io.to(`merchant_${access.order.merchant_id}`).emit('NEW_CHAT_MESSAGE', messagePayload);
+      }
+      if (access.order?.customer_id) {
+        io.to(`customer_${access.order.customer_id}`).emit('NEW_CHAT_MESSAGE', messagePayload);
+      }
+      if (access.order?.rider_id) {
+        io.to(`rider_${access.order.rider_id}`).emit('NEW_CHAT_MESSAGE', messagePayload);
+      }
     }
 
     res.status(201).json({

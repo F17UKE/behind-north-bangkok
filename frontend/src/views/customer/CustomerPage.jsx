@@ -81,11 +81,8 @@ export default function CustomerPage() {
   const [apiNotice, setApiNotice] = useState("");
   const [currentDorm, setCurrentDorm] = useState(dormitories[0]);
   const [showDormPicker, setShowDormPicker] = useState(false);
-  const [chatMessages, setChatMessages] = useState([
-    { from: "store", text: "สวัสดีครับ 👋" },
-    { from: "me", text: "ออเดอร์ถึงไหนแล้วครับ" },
-    { from: "store", text: "กำลังเตรียมอาหารให้ครับ" },
-  ]);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
 
   const [pendingReturnScreen, setPendingReturnScreen] = useState(null);
 
@@ -367,7 +364,7 @@ export default function CustomerPage() {
       store: cart[0]?.storeName || selectedStore.name || "ตามสั่ง by เชฟเจนนี่",
       items: itemsDescription,
       total,
-      status: "PENDING_PAYMENT",
+      status: "PENDING_ACCEPT",
       date: "Today, now",
       qrImage: null,
       deliveryAddress: `${dorm.name} ห้อง ${room} (${dorm.soi})`
@@ -398,15 +395,8 @@ export default function CustomerPage() {
           newOrder.rawId = orderId;
           newOrder.id = `#ORD${String(orderId).padStart(3, "0")}`;
 
-          // ดึง QR Code PromptPay
-          try {
-            const qrRes = await orderApi.getPromptPayQR(orderId);
-            if (qrRes?.qr_image_base64) {
-              newOrder.qrImage = qrRes.qr_image_base64;
-            }
-          } catch (qrErr) {
-            console.log("Could not generate PromptPay QR:", qrErr.message);
-          }
+          // รอร้านค้ารับออเดอร์ก่อน ถึงจะสร้างและดึง QR Code PromptPay
+          newOrder.status = "PENDING_ACCEPT";
         }
       }
     } catch (apiErr) {
@@ -424,23 +414,131 @@ export default function CustomerPage() {
     }
   }
 
+  // Real-time Socket & Unread messages listener for Customer
+  useEffect(() => {
+    const socket = getSocket("CUSTOMER");
+    if (!socket) return;
+
+    const user = authApi.getCurrentUser("CUSTOMER");
+    if (user?.id) {
+      socket.emit("join_customer_room", { customer_id: user.id });
+    }
+
+    // ฟังอัปเดตสถานะออเดอร์ Real-time
+    const handleStatus = (payload) => {
+      const orderId = Number(payload.order_id || payload.orderId);
+      console.log("⚡ [Customer Socket] ORDER_STATUS_UPDATED:", payload);
+
+      if (payload.status === "PENDING_PAYMENT") {
+        playOrderChime();
+        setApiNotice("🔔 ร้านค้ารับออเดอร์แล้ว! กรุณาสแกน QR เพื่อชำระเงิน");
+      } else if (payload.status === "REJECTED_BY_MERCHANT") {
+        setApiNotice("⚠️ ขออภัย ร้านค้าปฏิเสธออเดอร์นี้");
+      } else if (payload.status === "READY_FOR_DELIVERY") {
+        setApiNotice("🍲 อาหารปรุงเสร็จแล้ว กำลังรอจัดส่ง");
+      } else if (payload.status === "IN_DELIVERY") {
+        setApiNotice("🛵 ไรเดอร์กำลังนำส่งอาหาร");
+      } else if (payload.status === "COMPLETED") {
+        setApiNotice("🎉 จัดส่งอาหารสำเร็จเรียบร้อยแล้ว!");
+      }
+
+      setOrders(current => current.map(o => {
+        if (o.rawId === orderId || o.id === `#ORD${String(orderId).padStart(3, "0")}`) {
+          return { ...o, status: payload.status };
+        }
+        return o;
+      }));
+
+      setSelectedOrder(current => {
+        if (current && (current.rawId === orderId || current.id === `#ORD${String(orderId).padStart(3, "0")}`)) {
+          return { ...current, status: payload.status };
+        }
+        return current;
+      });
+    };
+
+    // ฟังข้อความแชทใหม่ Real-time
+    const handleNewChat = (payload) => {
+      console.log("💬 [Customer Socket] NEW_CHAT_MESSAGE:", payload);
+      playOrderChime();
+      setUnreadChatCount(c => c + 1);
+      setApiNotice(`💬 มีข้อความใหม่จากร้านค้า: ${payload.content_text || payload.contentText || ""}`);
+    };
+
+    socket.on("ORDER_STATUS_UPDATED", handleStatus);
+    socket.on("NEW_CHAT_MESSAGE", handleNewChat);
+
+    // โหลด unread count เริ่มต้น
+    if (authApi.isLoggedIn("CUSTOMER")) {
+      orderApi.getUnreadCount("CUSTOMER").then(res => {
+        if (res?.totalUnread) setUnreadChatCount(res.totalUnread);
+      }).catch(() => {});
+    }
+
+    return () => {
+      socket.off("ORDER_STATUS_UPDATED", handleStatus);
+      socket.off("NEW_CHAT_MESSAGE", handleNewChat);
+    };
+  }, []);
+
+  // Polling fallback เมื่อออเดอร์อยู่ในสถานะ PENDING_ACCEPT (รอร้านรับ)
+  useEffect(() => {
+    if (!selectedOrder?.rawId || selectedOrder.status !== "PENDING_ACCEPT") return;
+
+    const timer = setInterval(async () => {
+      try {
+        const freshOrders = await orderApi.getCustomerOrders();
+        if (Array.isArray(freshOrders)) {
+          const matched = freshOrders.find(o => o.id === selectedOrder.rawId);
+          if (matched && matched.status !== "PENDING_ACCEPT") {
+            setSelectedOrder(prev => ({ ...prev, status: matched.status }));
+            setOrders(prev => prev.map(o => o.rawId === matched.id ? { ...o, status: matched.status } : o));
+            if (matched.status === "PENDING_PAYMENT") {
+              playOrderChime();
+              setApiNotice("🔔 ร้านค้ารับออเดอร์แล้ว! กรุณาสแกน QR เพื่อชำระเงิน");
+            }
+          }
+        }
+      } catch (e) {}
+    }, 3000);
+
+    return () => clearInterval(timer);
+  }, [selectedOrder?.rawId, selectedOrder?.status]);
+
   // ยืนยันการชำระเงินและตรวจสอบสลิปผ่าน API
-  async function verifySlip(order) {
+  async function verifySlip(order, slipFile) {
+    if (!order) return;
     try {
       const orderId = order.rawId || 1;
-      await orderApi.verifySlip(orderId, { simulated: true, amount: order.total });
-      setApiNotice("✅ ตรวจสอบสลิปสำเร็จ! สถานะเปลี่ยนเป็น: ชำระเงินแล้ว");
-      
+      let res;
+      if (slipFile) {
+        res = await orderApi.verifySlip(orderId, slipFile);
+      } else {
+        res = await orderApi.verifySlip(orderId, { simulated: true, amount: order.total });
+      }
+
+      setApiNotice("✅ ตรวจสอบสลิปสำเร็จ! สถานะ: ชำระเงินแล้ว");
       const updatedOrder = { ...order, status: "PAID" };
       setSelectedOrder(updatedOrder);
-      setOrders(current => current.map(o => (o.id === order.id ? updatedOrder : o)));
+      setOrders(current => current.map(o => (o.id === order.id || o.rawId === order.rawId ? updatedOrder : o)));
       setTimeout(() => setApiNotice(""), 3500);
     } catch (err) {
-      setApiNotice("⚠️ สลิปผ่านการตรวจสอบจำลองแล้ว");
-      const updatedOrder = { ...order, status: "PAID" };
+      alert("การตรวจสอบสลิปล้มเหลว: " + (err?.response?.data?.message || err.message));
+    }
+  }
+
+  async function handleCancelOrder(order) {
+    if (!confirm("คุณต้องการยกเลิกคำสั่งซื้อนี้ใช่หรือไม่?")) return;
+    try {
+      const orderId = order.rawId || 1;
+      await orderApi.cancelOrder(orderId);
+      setApiNotice("✅ ยกเลิกคำสั่งซื้อเรียบร้อยแล้ว");
+      const updatedOrder = { ...order, status: "CANCELLED_BY_CUSTOMER" };
       setSelectedOrder(updatedOrder);
-      setOrders(current => current.map(o => (o.id === order.id ? updatedOrder : o)));
-      setTimeout(() => setApiNotice(""), 3500);
+      setOrders(current => current.map(o => (o.id === order.id || o.rawId === order.rawId ? updatedOrder : o)));
+      setTimeout(() => setApiNotice(""), 3000);
+    } catch (err) {
+      alert("ไม่สามารถยกเลิกคำสั่งซื้อได้: " + err.message);
     }
   }
 
@@ -560,7 +658,7 @@ export default function CustomerPage() {
           />
         )}
         {screen === "recent" && <Recent orders={orders} onOpen={(order) => { setSelectedOrder(order); setScreen("delivery"); }} onHome={() => setScreen("home")} />}
-        {screen === "delivery" && <Delivery order={selectedOrder} onBack={() => setScreen("recent")} onChat={() => setScreen("chat")} onVerifySlip={() => verifySlip(selectedOrder)} />}
+        {screen === "delivery" && <Delivery order={selectedOrder} onBack={() => setScreen("recent")} onChat={() => setScreen("chat")} onVerifySlip={(ord, slip) => verifySlip(ord, slip)} onCancelOrder={(ord) => handleCancelOrder(ord)} unreadMessages={unreadChatCount} />}
         {screen === "profile" && (
           <Profile
             profile={profile}
@@ -645,7 +743,13 @@ export default function CustomerPage() {
             }}
           />
         )}
-        {screen === "chat" && <CustomerChat storeName={selectedOrder?.store} messages={chatMessages} value={chatText} setValue={setChatText} onSend={sendChat} onBack={() => setScreen("delivery")} />}
+        {screen === "chat" && (
+          <CustomerChat
+            order={selectedOrder}
+            storeName={selectedOrder?.store}
+            onBack={() => setScreen("delivery")}
+          />
+        )}
         {screen === "login" && (
           <CustomerAuth
             mode="login"
@@ -747,7 +851,19 @@ export default function CustomerPage() {
           />
         )}
       </div>
-      <BottomNav tone="orange" active={screen === "profile" ? "profile" : ["recent", "delivery"].includes(screen) ? "order" : "home"} onChange={nav} items={[{ key: "home", label: "หน้าแรก", icon: "⌂" }, { key: "order", label: "ออเดอร์", icon: "▣" }, { key: "profile", label: "โปรไฟล์", icon: "♙" }, { key: "cart", label: cartCount ? `ตะกร้า (${cartCount})` : "ตะกร้า", icon: "🛒" }]} />
+      {!["login", "signup", "chat"].includes(screen) && (
+        <BottomNav
+          tone="orange"
+          active={screen === "profile" ? "profile" : ["recent", "delivery"].includes(screen) ? "order" : "home"}
+          onChange={nav}
+          items={[
+            { key: "home", label: "หน้าแรก", icon: "⌂" },
+            { key: "order", label: unreadChatCount > 0 ? `ออเดอร์ (${unreadChatCount})` : "ออเดอร์", icon: "▣" },
+            { key: "profile", label: "โปรไฟล์", icon: "♙" },
+            { key: "cart", label: cartCount ? `ตะกร้า (${cartCount})` : "ตะกร้า", icon: "🛒" }
+          ]}
+        />
+      )}
       {!["login", "signup", "profile", "save-place"].includes(screen) && cartCount > 0 && (
         <button className="floating-cart-button" onClick={() => setScreen("basket")}>
           🛒 {cartCount} · {total} ฿
@@ -1214,43 +1330,348 @@ function CartStoreThumb({ storeId }) {
 function Summary({ subtotal, delivery, total }) { return <div className="summary"><div><span>Subtotal</span><b>{subtotal} ฿</b></div><div><span>Delivery fee</span><b>{delivery} ฿</b></div><hr/><div className="total"><span>Total</span><strong>{total} ฿</strong></div></div>; }
 
 function Recent({ orders, onOpen, onHome }) {
-  return <><TopBar title="Recent" onBack={onHome} /><div className="list-title"><b>Recent Orders</b><span>{orders.length}</span></div>{orders.map((order) => <button className="recent-order-row" key={order.id} onClick={() => onOpen(order)}><div className="food-thumb">{order.status === "COMPLETED" ? "🍽️" : "🍛"}</div><div className="recent-main"><b>{order.store}</b><small>{order.items?.join(" · ")}</small><span>{order.date}</span></div><div className="recent-right"><b>{order.total} ฿</b><small className={order.status === "COMPLETED" ? "green-text" : order.status === "PAID" ? "blue-text" : "orange-text"}>{statusLabel[order.status] || order.status}</small></div></button>)}</>;
-}
-
-function Delivery({ order, onBack, onChat, onVerifySlip }) {
-  const steps = ["PENDING_PAYMENT", "PAID", "PREPARING", "READY_FOR_DELIVERY", "IN_DELIVERY", "COMPLETED"];
-  const currentStep = order?.status === "PENDING_ACCEPT" ? "PAID" : (order?.status || "PENDING_PAYMENT");
-  const index = Math.max(0, steps.indexOf(currentStep));
-
-  return <><TopBar title={`Order ${order?.id || "#ORD001"}`} onBack={onBack} action={<button className="topbar-btn">⋮</button>} />
-    <div className="delivery-card">
-      <div className="delivery-order-head">
-        <div><b>Order {order?.id || "#ORD001"}</b><small>{order?.date || "Today, now"}</small></div>
-        <strong>{order?.total || 90} ฿</strong>
+  return (
+    <div style={{ paddingBottom: "140px" }}>
+      <TopBar title="ประวัติการสั่งซื้อ" subtitle="Recent Orders" onBack={onHome} />
+      <div className="list-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 14px" }}>
+        <b style={{ fontSize: "16px", color: "#1e293b" }}>คำสั่งซื้อของฉัน</b>
+        <span style={{ background: "#f1f5f9", color: "#475569", padding: "2px 8px", borderRadius: "12px", fontSize: "12px", fontWeight: 700 }}>
+          {orders.length} รายการ
+        </span>
       </div>
 
-      {/* ถ้าอยู่ในสถานะรอชำระเงิน และมี PromptPay QR ให้แสดง QR ให้สแกน */}
-      {order?.status === "PENDING_PAYMENT" && (
-        <div className="qr-payment-card" style={{ textAlign: "center", padding: "16px", background: "#f8f9fa", borderRadius: "12px", margin: "12px 0" }}>
-          <b>สแกน QR เพื่อชำระเงิน (PromptPay)</b>
-          <div style={{ margin: "10px auto", width: "180px", height: "180px", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", border: "1px dashed #ccc", borderRadius: "8px" }}>
-            {order.qrImage ? (
-              <img src={order.qrImage} alt="PromptPay QR" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
-            ) : (
-              <div style={{ fontSize: "13px", color: "#666" }}>📱 พร้อมเพย์ QR ฿{order?.total}</div>
-            )}
-          </div>
-          <button className="primary-btn" style={{ marginTop: "8px", width: "100%" }} onClick={onVerifySlip}>
-            📤 แนบสลิป / ตรวจสอบสลิป (Verify Slip)
-          </button>
-        </div>
-      )}
+      <div style={{ padding: "0 12px" }}>
+        {orders.length > 0 ? (
+          orders.map((order) => {
+            const isCompleted = order.status === "COMPLETED";
+            const isPaid = ["PAID", "PREPARING", "READY_FOR_DELIVERY", "IN_DELIVERY"].includes(order.status);
+            const isCancelled = ["CANCELLED", "CANCELLED_BY_CUSTOMER", "CANCELLED_BY_TIMEOUT", "CANCELLED_BY_MERCHANT", "REJECTED_BY_MERCHANT"].includes(order.status);
 
-      {steps.map((step, i) => <div className={`delivery-step ${i <= index ? "done" : ""}`} key={step}><div className="step-dot">{i <= index ? "✓" : "•"}</div><div><b>{statusLabel[step] || step}</b><small>{i === index ? "Current status" : i < index ? "Completed" : "Waiting"}</small></div></div>)}
+            const badgeBg = isCompleted ? "#ecfdf5" : isPaid ? "#eff6ff" : isCancelled ? "#fef2f2" : "#fff7ed";
+            const badgeColor = isCompleted ? "#059669" : isPaid ? "#2563eb" : isCancelled ? "#dc2626" : "#d97706";
+            const badgeBorder = isCompleted ? "#a7f3d0" : isPaid ? "#bfdbfe" : isCancelled ? "#fecaca" : "#fed7aa";
+
+            return (
+              <button
+                className="recent-order-row"
+                key={order.id}
+                onClick={() => onOpen(order)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  background: "white",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: "14px",
+                  padding: "14px",
+                  marginBottom: "10px",
+                  boxShadow: "0 2px 6px rgba(0,0,0,0.03)",
+                  width: "100%",
+                  textAlign: "left",
+                  cursor: "pointer",
+                  gap: "12px"
+                }}
+              >
+                <div style={{ width: "44px", height: "44px", borderRadius: "12px", background: "#fff7ed", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px", flexShrink: 0 }}>
+                  {isCompleted ? "🍽️" : isCancelled ? "❌" : "🍛"}
+                </div>
+
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <b style={{ fontSize: "14px", color: "#1e293b", display: "block", textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
+                    {order.store}
+                  </b>
+                  <small style={{ color: "#64748b", display: "block", fontSize: "12px", textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap", margin: "2px 0" }}>
+                    {Array.isArray(order.items) ? order.items.join(" · ") : order.items || "รายการอาหาร"}
+                  </small>
+                  <span style={{ fontSize: "11px", color: "#94a3b8" }}>{order.date}</span>
+                </div>
+
+                <div style={{ textAlign: "right", flexShrink: 0 }}>
+                  <strong style={{ fontSize: "15px", color: "#1e293b", display: "block", marginBottom: "4px" }}>
+                    ฿{order.total}
+                  </strong>
+                  <span style={{
+                    display: "inline-block",
+                    padding: "3px 8px",
+                    borderRadius: "6px",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    background: badgeBg,
+                    color: badgeColor,
+                    border: `1px solid ${badgeBorder}`,
+                    whiteSpace: "nowrap"
+                  }}>
+                    {statusLabel[order.status] || order.status}
+                  </span>
+                </div>
+              </button>
+            );
+          })
+        ) : (
+          <EmptyState title="ยังไม่มีคำสั่งซื้อ" text="สั่งอาหารจานโปรดของคุณได้เลยที่หน้าแรก" />
+        )}
+      </div>
     </div>
-    <div className="restaurant-line"><div className="food-thumb">🍛</div><div><b>{order?.store || "ครัวหลังมอ"}</b><small>ร้านอาหาร · 34 mins</small></div><span>⭐ 4.8</span></div>
-    <button className="secondary-btn" onClick={onChat}>Chat with Restaurant</button>
-  </>;
+  );
+}
+
+function Delivery({ order, onBack, onChat, onVerifySlip, onCancelOrder, unreadMessages = 0 }) {
+  const [qrImage, setQrImage] = useState(order?.qrImage || null);
+  const [slipFile, setSlipFile] = useState(null);
+  const [verifying, setVerifying] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+
+  // โหลด PromptPay QR ทันทีเมื่อออเดอร์อยู่ในสถานะ PENDING_PAYMENT
+  useEffect(() => {
+    async function fetchQR() {
+      if (order?.status === "PENDING_PAYMENT" && !qrImage && order?.rawId) {
+        try {
+          const res = await orderApi.getPromptPayQR(order.rawId);
+          if (res?.qr_image_base64) {
+            setQrImage(res.qr_image_base64);
+          }
+        } catch (e) {
+          console.warn("Could not load QR:", e);
+        }
+      }
+    }
+    fetchQR();
+  }, [order?.status, order?.rawId, qrImage]);
+
+  const steps = ["PENDING_ACCEPT", "PENDING_PAYMENT", "PAID", "PREPARING", "READY_FOR_DELIVERY", "IN_DELIVERY", "COMPLETED"];
+  const currentStep = order?.status || "PENDING_ACCEPT";
+  const stepIndex = steps.indexOf(currentStep);
+
+  return (
+    <div style={{ paddingBottom: "140px" }}>
+      <TopBar title={`ออเดอร์ ${order?.id || "#ORD001"}`} subtitle="ติดตามสถานะจัดส่ง" onBack={onBack} />
+
+      <div className="delivery-card" style={{ margin: "12px", padding: "16px", borderRadius: "16px", background: "white", border: "1px solid #e2e8f0" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+          <div>
+            <b style={{ fontSize: "16px", color: "#1e293b", display: "block" }}>{order?.id || "#ORD001"}</b>
+            <small style={{ color: "#64748b" }}>{order?.date || "วันนี้"}</small>
+          </div>
+          <strong style={{ fontSize: "18px", color: "#ea580c" }}>฿{order?.total || 0}</strong>
+        </div>
+
+        {/* 1. กรณีสถานะ PENDING_ACCEPT: ต้องรอร้านค้ารับออเดอร์ก่อน ถึงจะมี QR Code */}
+        {order?.status === "PENDING_ACCEPT" && (
+          <div style={{
+            background: "linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%)",
+            border: "1px solid #fed7aa",
+            borderRadius: "14px",
+            padding: "18px 14px",
+            margin: "12px 0 16px",
+            textAlign: "center"
+          }}>
+            <div style={{ fontSize: "36px", marginBottom: "6px" }}>⏳</div>
+            <b style={{ fontSize: "15px", color: "#9a3412", display: "block", marginBottom: "4px" }}>
+              รอร้านค้ารับออเดอร์...
+            </b>
+            <p style={{ fontSize: "12px", color: "#7c2d12", margin: "0 0 12px", lineHeight: 1.5 }}>
+              ร้านค้ากำลังตรวจสอบรายการอาหารของคุณ เมื่อร้านค้ารับออเดอร์แล้ว ระบบจะแสดงคิวอาร์โค้ด PromptPay สำหรับชำระเงินทันที (ไม่ต้องรีเฟรชหน้าเว็บ)
+            </p>
+            <button
+              onClick={() => onCancelOrder && onCancelOrder(order)}
+              disabled={cancelling}
+              style={{
+                background: "white",
+                border: "1px solid #fca5a5",
+                color: "#dc2626",
+                borderRadius: "8px",
+                padding: "7px 14px",
+                fontSize: "12px",
+                fontWeight: 600,
+                cursor: "pointer"
+              }}
+            >
+              {cancelling ? "กำลังยกเลิก..." : "ยกเลิกคำสั่งซื้อนี้"}
+            </button>
+          </div>
+        )}
+
+        {/* 2. กรณีสถานะ PENDING_PAYMENT: ร้านรับแล้ว แสดง QR Code PromptPay + แนบสลิป */}
+        {order?.status === "PENDING_PAYMENT" && (
+          <div style={{
+            background: "#f0fdf4",
+            border: "1.5px solid #86efac",
+            borderRadius: "14px",
+            padding: "16px",
+            margin: "12px 0 16px",
+            textAlign: "center"
+          }}>
+            <div style={{ display: "inline-block", background: "#dcfce7", color: "#15803d", padding: "4px 10px", borderRadius: "12px", fontSize: "12px", fontWeight: 700, marginBottom: "8px" }}>
+              ✓ ร้านค้ารับออเดอร์แล้ว! กรุณาชำระเงิน
+            </div>
+            <b style={{ fontSize: "15px", color: "#1e293b", display: "block", marginBottom: "2px" }}>
+              สแกน QR เพื่อชำระเงิน (PromptPay)
+            </b>
+            <small style={{ color: "#64748b", display: "block", marginBottom: "10px" }}>
+              ยอดชำระ: <strong style={{ color: "#16a34a", fontSize: "15px" }}>฿{order?.total}</strong>
+            </small>
+
+            <div style={{
+              margin: "0 auto 12px",
+              width: "180px",
+              height: "180px",
+              background: "white",
+              border: "1px solid #e2e8f0",
+              borderRadius: "10px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              overflow: "hidden"
+            }}>
+              {qrImage ? (
+                <img src={qrImage} alt="PromptPay QR" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+              ) : (
+                <div style={{ fontSize: "12px", color: "#64748b" }}>📱 กำลังโหลด QR Code...</div>
+              )}
+            </div>
+
+            <div style={{ marginBottom: "10px" }}>
+              <label style={{
+                display: "block",
+                background: "white",
+                border: "1px dashed #94a3b8",
+                borderRadius: "8px",
+                padding: "8px 12px",
+                cursor: "pointer",
+                fontSize: "12px",
+                color: "#334155",
+                fontWeight: 600
+              }}>
+                {slipFile ? `📁 สลิป: ${slipFile.name}` : "📎 เลือกไฟล์รูปภาพสลิปโอนเงิน"}
+                <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => setSlipFile(e.target.files?.[0] || null)} />
+              </label>
+            </div>
+
+            <button
+              onClick={() => onVerifySlip(order, slipFile)}
+              style={{
+                width: "100%",
+                padding: "10px",
+                borderRadius: "8px",
+                border: "none",
+                background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                color: "white",
+                fontSize: "13px",
+                fontWeight: 700,
+                cursor: "pointer",
+                boxShadow: "0 2px 8px rgba(16, 185, 129, 0.25)"
+              }}
+            >
+              📤 แนบสลิป / ตรวจสอบสลิป (Verify Slip)
+            </button>
+          </div>
+        )}
+
+        {/* 3. กรณีชำระเงินแล้ว หรืออยู่ในขั้นตอนเตรียมและจัดส่ง */}
+        {["PAID", "PREPARING"].includes(order?.status) && (
+          <div style={{ background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: "10px", padding: "10px", margin: "10px 0", textAlign: "center", fontSize: "12px", color: "#065f46" }}>
+            ✅ ชำระเงินเรียบร้อยแล้ว · ร้านค้ากำลังเตรียมอาหาร
+          </div>
+        )}
+        {order?.status === "READY_FOR_DELIVERY" && (
+          <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "10px", padding: "10px", margin: "10px 0", textAlign: "center", fontSize: "12px", color: "#1e40af" }}>
+            🍲 อาหารปรุงเสร็จแล้ว · กำลังรอไรเดอร์เข้ารับ
+          </div>
+        )}
+        {order?.status === "IN_DELIVERY" && (
+          <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "10px", padding: "10px", margin: "10px 0", textAlign: "center", fontSize: "12px", color: "#1e40af" }}>
+            🛵 ไรเดอร์กำลังนำส่งอาหารไปยังหอพักของคุณ
+          </div>
+        )}
+        {order?.status === "COMPLETED" && (
+          <div style={{ background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: "10px", padding: "10px", margin: "10px 0", textAlign: "center", fontSize: "12px", color: "#065f46" }}>
+            🎉 จัดส่งสำเร็จเรียบร้อยแล้ว ขอบคุณที่ใช้บริการ!
+          </div>
+        )}
+        {["CANCELLED", "CANCELLED_BY_CUSTOMER", "CANCELLED_BY_TIMEOUT", "CANCELLED_BY_MERCHANT", "REJECTED_BY_MERCHANT"].includes(order?.status) && (
+          <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "10px", padding: "10px", margin: "10px 0", textAlign: "center", fontSize: "12px", color: "#991b1b" }}>
+            ❌ ออเดอร์นี้ถูกยกเลิกแล้ว ({statusLabel[order?.status] || "ยกเลิก"})
+          </div>
+        )}
+
+        {/* Timeline steps */}
+        <div style={{ marginTop: "14px" }}>
+          {steps.map((st, i) => {
+            const isDone = stepIndex >= i;
+            const isCurrent = stepIndex === i;
+            return (
+              <div key={st} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "6px 0" }}>
+                <div style={{
+                  width: "22px",
+                  height: "22px",
+                  borderRadius: "50%",
+                  background: isDone ? "#10b981" : "#f1f5f9",
+                  color: isDone ? "white" : "#94a3b8",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "11px",
+                  fontWeight: 700
+                }}>
+                  {isDone ? "✓" : i + 1}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <b style={{ fontSize: "13px", color: isCurrent ? "#059669" : isDone ? "#1e293b" : "#94a3b8" }}>
+                    {statusLabel[st] || st}
+                  </b>
+                  <small style={{ display: "block", fontSize: "11px", color: "#94a3b8" }}>
+                    {isCurrent ? "สถานะปัจจุบัน" : isDone ? "เสร็จสิ้น" : "รอดำเนินการ"}
+                  </small>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ข้อมูลร้านและปุ่มแชท */}
+      <div style={{ margin: "0 12px 14px", background: "white", padding: "12px 14px", borderRadius: "14px", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <div style={{ width: "36px", height: "36px", borderRadius: "10px", background: "#fff7ed", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "18px" }}>
+            🍛
+          </div>
+          <div>
+            <b style={{ fontSize: "14px", color: "#1e293b" }}>{order?.store || "ร้านอาหาร"}</b>
+            <small style={{ display: "block", color: "#64748b" }}>จัดส่งไปยัง: {order?.deliveryAddress || "หอพักของคุณ"}</small>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ padding: "0 12px" }}>
+        <button
+          onClick={onChat}
+          style={{
+            width: "100%",
+            background: "#ea580c",
+            color: "white",
+            border: "none",
+            borderRadius: "12px",
+            padding: "12px",
+            fontSize: "14px",
+            fontWeight: 700,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "8px",
+            boxShadow: "0 4px 12px rgba(234, 88, 12, 0.25)"
+          }}
+        >
+          💬 แชทกับร้านค้า / ไรเดอร์
+          {unreadMessages > 0 && (
+            <span style={{ background: "white", color: "#ea580c", padding: "1px 7px", borderRadius: "10px", fontSize: "11px", fontWeight: 800 }}>
+              {unreadMessages}
+            </span>
+          )}
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function Profile({ profile, savedAddress, onBack, onManageAddress, onOrders, onLogin, onLogout }) {
@@ -1536,8 +1957,178 @@ function SavePlace({ initialAddress, currentDorm, userPhone, onBack, onSave }) {
   );
 }
 
-function CustomerChat({ storeName, messages, value, setValue, onSend, onBack }) {
-  return <><div className="chat-top"><button onClick={onBack}>‹</button><div><b>{storeName || "ครัวหลังมอ"}</b><small>online</small></div><span>☎</span></div><div className="chat-messages">{messages.map((m,i)=><div className={`chat-bubble ${m.from === "me" ? "me" : "store"}`} key={i}>{m.text}</div>)}</div><form className="chat-compose" onSubmit={onSend}><input value={value} onChange={(e)=>setValue(e.target.value)} placeholder="เขียนข้อความ..."/><button>➤</button></form></>;
+function CustomerChat({ order, storeName, onBack }) {
+  const [messages, setMessages] = useState([]);
+  const [text, setText] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const orderId = order?.rawId || (order?.id ? Number(String(order?.id).replace(/\D/g, "")) : null);
+
+  useEffect(() => {
+    if (!orderId) return;
+
+    async function loadChat() {
+      setLoading(true);
+      try {
+        const hist = await orderApi.getChatHistory(orderId, "CUSTOMER");
+        if (Array.isArray(hist)) {
+          setMessages(hist);
+          if (hist.length > 0) {
+            const lastId = hist[hist.length - 1].id;
+            await orderApi.markAsRead(orderId, lastId, "CUSTOMER");
+          }
+        }
+      } catch (err) {
+        console.warn("Could not fetch chat history:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadChat();
+
+    const socket = getSocket("CUSTOMER");
+    if (socket) {
+      socket.emit("join_order_room", { orderId });
+
+      const handleMsg = (payload) => {
+        if (Number(payload.order_id || payload.orderId) === orderId) {
+          setMessages(prev => {
+            if (prev.some(m => m.id === payload.id)) return prev;
+            return [...prev, payload];
+          });
+          if (payload.id) {
+            orderApi.markAsRead(orderId, payload.id, "CUSTOMER").catch(() => {});
+          }
+        }
+      };
+
+      socket.on("new_message", handleMsg);
+      return () => {
+        socket.off("new_message", handleMsg);
+      };
+    }
+  }, [orderId]);
+
+  async function handleSend(e) {
+    e.preventDefault();
+    if (!text.trim() || !orderId || sending) return;
+    const sendText = text.trim();
+    setText("");
+    setSending(true);
+
+    try {
+      const res = await orderApi.sendMessage(orderId, sendText, "CUSTOMER");
+      if (res?.data) {
+        setMessages(prev => {
+          if (prev.some(m => m.id === res.data.id)) return prev;
+          return [...prev, res.data];
+        });
+      }
+    } catch (err) {
+      alert("ไม่สามารถส่งข้อความได้: " + err.message);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "#f8fafc" }}>
+      <TopBar title={`แชท: ${storeName || "ร้านค้า"}`} subtitle={`ออเดอร์ #${orderId || ""}`} onBack={onBack} />
+
+      <div style={{ flex: 1, overflowY: "auto", padding: "14px 12px 80px", display: "flex", flexDirection: "column", gap: "8px" }}>
+        {loading ? (
+          <div style={{ textAlign: "center", color: "#94a3b8", fontSize: "13px", padding: "30px 0" }}>
+            กำลังโหลดข้อความ...
+          </div>
+        ) : messages.length > 0 ? (
+          messages.map((m, i) => {
+            const isMe = !m.is_merchant_sender;
+            return (
+              <div
+                key={m.id || i}
+                style={{
+                  alignSelf: isMe ? "flex-end" : "flex-start",
+                  maxWidth: "75%",
+                  background: isMe ? "linear-gradient(135deg, #ea580c 0%, #c2410c 100%)" : "white",
+                  color: isMe ? "white" : "#1e293b",
+                  padding: "10px 14px",
+                  borderRadius: isMe ? "14px 14px 2px 14px" : "14px 14px 14px 2px",
+                  fontSize: "13px",
+                  border: isMe ? "none" : "1px solid #e2e8f0",
+                  boxShadow: "0 2px 6px rgba(0,0,0,0.04)"
+                }}
+              >
+                {!isMe && (
+                  <small style={{ display: "block", color: "#64748b", fontSize: "10px", marginBottom: "2px", fontWeight: 700 }}>
+                    {m.sender_sub_role === "RIDER" ? "🛵 ไรเดอร์" : "🍲 ร้านค้า"}
+                  </small>
+                )}
+                <div>{m.content_text || m.text}</div>
+                <small style={{ display: "block", textAlign: "right", fontSize: "9px", opacity: 0.8, marginTop: "4px" }}>
+                  {m.created_at ? new Date(m.created_at).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" }) : ""}
+                </small>
+              </div>
+            );
+          })
+        ) : (
+          <div style={{ textAlign: "center", color: "#94a3b8", fontSize: "13px", padding: "40px 0" }}>
+            💬 ยังไม่มีข้อความสนทนา พิมพ์ทักทายร้านค้าได้เลยครับ
+          </div>
+        )}
+      </div>
+
+      <form
+        onSubmit={handleSend}
+        style={{
+          position: "fixed",
+          bottom: 0,
+          left: 0,
+          right: 0,
+          background: "white",
+          borderTop: "1px solid #e2e8f0",
+          padding: "10px 14px",
+          display: "flex",
+          gap: "8px",
+          alignItems: "center",
+          zIndex: 99
+        }}
+      >
+        <input
+          type="text"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="พิมพ์ข้อความสอบถามร้านค้า..."
+          style={{
+            flex: 1,
+            padding: "10px 14px",
+            borderRadius: "20px",
+            border: "1px solid #cbd5e1",
+            fontSize: "14px",
+            outline: "none"
+          }}
+        />
+        <button
+          type="submit"
+          disabled={!text.trim() || sending}
+          style={{
+            background: "#ea580c",
+            color: "white",
+            border: "none",
+            borderRadius: "50%",
+            width: "40px",
+            height: "40px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "16px",
+            cursor: "pointer"
+          }}
+        >
+          ➤
+        </button>
+      </form>
+    </div>
+  );
 }
 
 function CustomerAuth({ mode, onBack, onSuccess, onSignUp, onLogin, isOrdering }) {
@@ -1735,10 +2326,49 @@ function DormitoryPickerModal({ currentDorm, onSelect, onClose }) {
           style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid #e2e8f0", margin: "8px 0" }}
         />
 
-        <div className="filter-scroll" style={{ display: "flex", gap: "6px", overflowX: "auto", paddingBottom: "8px" }}>
-          <button className={selectedSoi === "All" ? "active" : ""} onClick={() => setSelectedSoi("All")}>ทุกซอย</button>
+        <div style={{
+          display: "flex",
+          gap: "8px",
+          overflowX: "auto",
+          padding: "6px 2px 10px",
+          flexShrink: 0,
+          whiteSpace: "nowrap",
+          scrollbarWidth: "none"
+        }}>
+          <button
+            type="button"
+            onClick={() => setSelectedSoi("All")}
+            style={{
+              flexShrink: 0,
+              padding: "7px 14px",
+              borderRadius: "20px",
+              border: selectedSoi === "All" ? "none" : "1px solid #e2e8f0",
+              background: selectedSoi === "All" ? "#ea580c" : "#f1f5f9",
+              color: selectedSoi === "All" ? "white" : "#475569",
+              fontSize: "12px",
+              fontWeight: 700,
+              cursor: "pointer"
+            }}
+          >
+            ทุกซอย
+          </button>
           {sois.map((s) => (
-            <button key={s.id} className={selectedSoi === s.name ? "active" : ""} onClick={() => setSelectedSoi(s.name)}>
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => setSelectedSoi(s.name)}
+              style={{
+                flexShrink: 0,
+                padding: "7px 14px",
+                borderRadius: "20px",
+                border: selectedSoi === s.name ? "none" : "1px solid #e2e8f0",
+                background: selectedSoi === s.name ? "#ea580c" : "#f1f5f9",
+                color: selectedSoi === s.name ? "white" : "#475569",
+                fontSize: "12px",
+                fontWeight: 700,
+                cursor: "pointer"
+              }}
+            >
               {s.name}
             </button>
           ))}

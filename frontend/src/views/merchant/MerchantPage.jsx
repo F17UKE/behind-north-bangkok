@@ -354,28 +354,26 @@ export default function MerchantPage() {
         )}
         {screen === "chat" && (
           <MerchantChat 
-            selected={selectedChat} 
-            setSelected={setSelectedChat} 
-            messages={messages} 
-            value={chatText} 
-            setValue={setChatText} 
-            onSend={sendChat} 
-            onBack={() => setScreen("home")} 
+            orders={orders}
+            onBack={() => setScreen("orders")} 
+            onUnreadChange={setUnreadChatCount}
           />
         )}
       </div>
-      <BottomNav 
-        tone="merchant" 
-        active={screen} 
-        onChange={(key) => setScreen(key)} 
-        items={[
-          { key: "home", label: "หน้าหลัก", icon: "⌂" },
-          { key: "orders", label: `ออเดอร์ (${orders.filter(o => ["PENDING_ACCEPT", "PENDING_PAYMENT", "PAID"].includes(o.status)).length})`, icon: "▣" },
-          { key: "menus", label: "เมนูอาหาร", icon: "🍲" },
-          { key: "delivery", label: "จัดส่ง", icon: "🛵" },
-          { key: "chat", label: "แชท", icon: "💬" }
-        ]} 
-      />
+      {!["chat"].includes(screen) && (
+        <BottomNav 
+          tone="merchant" 
+          active={screen} 
+          onChange={(key) => setScreen(key)} 
+          items={[
+            { key: "home", label: "หน้าหลัก", icon: "⌂" },
+            { key: "orders", label: `ออเดอร์ (${orders.filter(o => ["PENDING_ACCEPT", "PENDING_PAYMENT", "PAID"].includes(o.status)).length})`, icon: "▣" },
+            { key: "menus", label: "เมนูอาหาร", icon: "🍲" },
+            { key: "delivery", label: "จัดส่ง", icon: "🛵" },
+            { key: "chat", label: unreadChatCount > 0 ? `แชท (${unreadChatCount})` : "แชท", icon: "💬" }
+          ]} 
+        />
+      )}
     </MobileShell>
   );
 }
@@ -404,9 +402,46 @@ function MerchantHome({ orders, go, query, setQuery, merchant, onLogout }) {
           </div>
           <small>{locationDesc}</small>
         </div>
-        <div style={{ display: "flex", gap: "6px" }}>
-          <button onClick={() => go("orders")} title="รีเฟรชออเดอร์">⚡ Real-time</button>
-          <button onClick={onLogout} style={{ background: "#fff1f2", color: "#e11d48", border: "1px solid #fecdd3" }} title="ออกจากระบบร้านค้า">🚪 ออก</button>
+        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+          <button 
+            onClick={() => go("orders")} 
+            style={{
+              background: "#ecfdf5",
+              color: "#059669",
+              border: "1px solid #a7f3d0",
+              borderRadius: "8px",
+              padding: "6px 12px",
+              fontSize: "12px",
+              fontWeight: 700,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: "4px",
+              whiteSpace: "nowrap"
+            }}
+          >
+            ⚡ Real-time
+          </button>
+          <button 
+            onClick={onLogout} 
+            style={{ 
+              background: "#fff1f2", 
+              color: "#e11d48", 
+              border: "1px solid #fecdd3",
+              borderRadius: "8px",
+              padding: "6px 12px",
+              fontSize: "12px",
+              fontWeight: 700,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: "4px",
+              whiteSpace: "nowrap"
+            }} 
+            title="ออกจากระบบร้านค้า"
+          >
+            🚪 ออกจากระบบ
+          </button>
         </div>
       </div>
 
@@ -1359,6 +1394,7 @@ function MerchantMenus({ merchant, onBack }) {
   const [imageUrl, setImageUrl] = useState("");
   const [uploadingImage, setUploadingImage] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
   const [notice, setNotice] = useState("");
 
   // Edit Menu State

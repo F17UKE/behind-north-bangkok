@@ -170,11 +170,24 @@ module.exports = (io) => {
 
                 // บรอดแคสต์ข้อความที่บันทึกแล้วกลับไปทุกคนในห้องออเดอร์
                 const roomName = `order_${orderId}`;
-                io.to(roomName).emit('new_message', {
+                const msgPayload = {
                     ...savedMessage,
+                    orderId: orderId,
+                    order_id: orderId,
                     from: data.from || data.senderName,
                     role: senderSubRole || (isMerchantSender ? 'STORE' : 'CUSTOMER')
-                });
+                };
+                io.to(roomName).emit('new_message', msgPayload);
+
+                try {
+                    knex('ORDERS').where('id', orderId).first().then(orderRecord => {
+                        if (orderRecord) {
+                            if (orderRecord.merchant_id) io.to(`merchant_${orderRecord.merchant_id}`).emit('NEW_CHAT_MESSAGE', msgPayload);
+                            if (orderRecord.customer_id) io.to(`customer_${orderRecord.customer_id}`).emit('NEW_CHAT_MESSAGE', msgPayload);
+                            if (orderRecord.rider_id) io.to(`rider_${orderRecord.rider_id}`).emit('NEW_CHAT_MESSAGE', msgPayload);
+                        }
+                    }).catch(() => {});
+                } catch (e) {}
 
             } catch (error) {
                 console.error('❌ ส่งข้อความล้มเหลว:', error);
