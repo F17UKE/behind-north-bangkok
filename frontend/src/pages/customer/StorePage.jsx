@@ -1,5 +1,5 @@
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Heart, Plus, ShoppingBag } from "lucide-react";
+import { ArrowLeft, ArrowRight, Heart, ShoppingBag } from "lucide-react";
 import { menuItems, stores } from "../../data/mockData";
 import SectionTitle from "../../components/SectionTitle";
 
@@ -55,7 +55,7 @@ export default function StorePage() {
               <p>{item.available ? "พร้อมขาย" : "หมดชั่วคราว"}</p>
             </div>
             <button className="add-btn" disabled={!item.available}>
-              <Plus size={20} />
+              <ArrowRight size={20} />
             </button>
           </div>
         ))}
