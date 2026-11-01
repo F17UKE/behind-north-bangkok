@@ -73,6 +73,16 @@ export const authApi = {
     return res;
   },
 
+  async getProfile(role = "CUSTOMER") {
+    const res = await api.get("/users/me", {}, role);
+    return res?.profile || res?.user || res;
+  },
+
+  async updateProfile(data, role = "CUSTOMER") {
+    const res = await api.put("/users/profile", data, {}, role);
+    return res?.profile || res;
+  },
+
   getCurrentUser(role = "CUSTOMER") {
     if (typeof window === "undefined") return null;
     const raw = localStorage.getItem(`${role.toLowerCase()}_user`);

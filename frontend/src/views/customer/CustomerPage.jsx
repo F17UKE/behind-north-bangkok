@@ -91,45 +91,81 @@ export default function CustomerPage() {
 
   // 1. ตรวจสอบการล็อกอินและโหลดข้อมูลที่อยู่ / ร้านค้าเมื่อเปิดหน้า
   useEffect(() => {
-    const savedUser = authApi.getCurrentUser("CUSTOMER");
-    if (savedUser) {
-      setProfile({
-        name: savedUser.username || savedUser.name || "ผู้ใช้งาน",
-        phone: savedUser.phone || "081-234-5678",
-        email: savedUser.email || "student@kmutnb.ac.th",
-        isGuest: false
-      });
-      loadCustomerOrders();
-    } else {
-      setProfile({
-        name: "",
-        phone: "",
-        email: "",
-        isGuest: true
-      });
-    }
+    async function initCustomerData() {
+      const savedUser = authApi.getCurrentUser("CUSTOMER");
+      if (savedUser && authApi.isLoggedIn("CUSTOMER")) {
+        setProfile({
+          name: savedUser.username || savedUser.name || "ผู้ใช้งาน",
+          phone: savedUser.phone || "",
+          email: savedUser.email || "student@kmutnb.ac.th",
+          isGuest: false
+        });
 
-    if (savedUser) {
-      try {
-        const userKey = `behind_customer_address_${savedUser.id || savedUser.username}`;
-        const storedAddr = localStorage.getItem(userKey) || localStorage.getItem("behind_customer_address");
-        if (storedAddr) {
-          const parsed = JSON.parse(storedAddr);
-          if (parsed?.dormitory && parsed?.roomNumber) {
-            setSavedAddress(parsed);
-            setSavedPlace(true);
-            if (parsed.dormitory) setCurrentDorm(parsed.dormitory);
+        // ดึงข้อมูลจริงจาก PostgreSQL (GET /api/users/me)
+        try {
+          const remoteProfile = await authApi.getProfile("CUSTOMER");
+          if (remoteProfile && (remoteProfile.id || remoteProfile.username)) {
+            setProfile({
+              name: remoteProfile.username || savedUser.username,
+              phone: remoteProfile.phone || savedUser.phone || "",
+              email: remoteProfile.email || savedUser.email || "student@kmutnb.ac.th",
+              isGuest: false
+            });
+
+            if (remoteProfile.dormitory_id && remoteProfile.room_number) {
+              const matchedDorm = dormitories.find(d => d.id === Number(remoteProfile.dormitory_id)) || {
+                id: remoteProfile.dormitory_id,
+                name: remoteProfile.dormitory_name || `หอพัก #${remoteProfile.dormitory_id}`,
+                soi: remoteProfile.soi_name || ""
+              };
+              const addr = {
+                dormitory: matchedDorm,
+                roomNumber: String(remoteProfile.room_number),
+                phone: remoteProfile.phone || savedUser.phone || "",
+                note: ""
+              };
+              setSavedAddress(addr);
+              setSavedPlace(true);
+              setCurrentDorm(matchedDorm);
+              try {
+                localStorage.setItem(`behind_customer_address_${remoteProfile.id || remoteProfile.username}`, JSON.stringify(addr));
+                localStorage.setItem("behind_customer_address", JSON.stringify(addr));
+              } catch (e) {}
+              loadCustomerOrders();
+              return;
+            }
           }
+        } catch (err) {
+          console.warn("Could not sync profile from server:", err);
         }
-      } catch (e) {
-        console.log("Could not load stored address:", e);
+
+        // หากใน DB ยังไม่มีข้อมูล ให้ fallback ไปดูที่ localStorage
+        try {
+          const userKey = `behind_customer_address_${savedUser.id || savedUser.username}`;
+          const storedAddr = localStorage.getItem(userKey) || localStorage.getItem("behind_customer_address");
+          if (storedAddr) {
+            const parsed = JSON.parse(storedAddr);
+            if (parsed?.dormitory && parsed?.roomNumber) {
+              setSavedAddress(parsed);
+              setSavedPlace(true);
+              if (parsed.dormitory) setCurrentDorm(parsed.dormitory);
+            }
+          }
+        } catch (e) {}
+        loadCustomerOrders();
+      } else {
+        setProfile({
+          name: "",
+          phone: "",
+          email: "",
+          isGuest: true
+        });
+        setSavedAddress(null);
+        setSavedPlace(false);
       }
-    } else {
-      setSavedAddress(null);
-      setSavedPlace(false);
     }
 
-    // โหลดร้านค้าจริงจาก Backend API
+    initCustomerData();
     loadMerchants();
   }, []);
 
@@ -570,7 +606,7 @@ export default function CustomerPage() {
                 setScreen("profile");
               }
             }}
-            onSave={(addr) => {
+            onSave={async (addr) => {
               setSavedAddress(addr);
               setSavedPlace(true);
               if (addr.dormitory) setCurrentDorm(addr.dormitory);
@@ -584,7 +620,20 @@ export default function CustomerPage() {
                 }
                 localStorage.setItem("behind_customer_address", JSON.stringify(addr));
               } catch (e) {}
-              setApiNotice("✅ บันทึกที่อยู่จัดส่งเรียบร้อยแล้ว!");
+
+              // บันทึกลง PostgreSQL Database ผ่าน API ทันที
+              try {
+                await authApi.updateProfile({
+                  dormitory_id: addr.dormitory?.id,
+                  room_number: addr.roomNumber,
+                  phone: addr.phone || profile.phone
+                }, "CUSTOMER");
+                setApiNotice("✅ บันทึกที่อยู่จัดส่งลงระบบสำเร็จ!");
+              } catch (err) {
+                console.warn("Error updating profile in DB:", err);
+                setApiNotice("✅ บันทึกที่อยู่จัดส่งเรียบร้อยแล้ว!");
+              }
+
               setTimeout(() => setApiNotice(""), 3000);
               if (pendingReturnScreen) {
                 const target = pendingReturnScreen;
@@ -610,26 +659,51 @@ export default function CustomerPage() {
                 setScreen("profile");
               }
             }}
-            onSuccess={(user) => {
+            onSuccess={async (user) => {
               setProfile({
                 name: user.username,
                 phone: user.phone || "081-234-5678",
                 email: user.email || "student@kmutnb.ac.th",
                 isGuest: false
               });
-              loadCustomerOrders();
+              // Sync ทันทีจาก PostgreSQL DB
               try {
-                const userKey = `behind_customer_address_${user.id || user.username}`;
-                const storedAddr = localStorage.getItem(userKey) || localStorage.getItem("behind_customer_address");
-                if (storedAddr) {
-                  const parsed = JSON.parse(storedAddr);
-                  if (parsed?.dormitory && parsed?.roomNumber) {
-                    setSavedAddress(parsed);
-                    setSavedPlace(true);
-                    if (parsed.dormitory) setCurrentDorm(parsed.dormitory);
+                const remoteProfile = await authApi.getProfile("CUSTOMER");
+                if (remoteProfile?.dormitory_id && remoteProfile?.room_number) {
+                  const matchedDorm = dormitories.find(d => d.id === Number(remoteProfile.dormitory_id)) || {
+                    id: remoteProfile.dormitory_id,
+                    name: remoteProfile.dormitory_name || `หอพัก #${remoteProfile.dormitory_id}`,
+                    soi: remoteProfile.soi_name || ""
+                  };
+                  const addr = {
+                    dormitory: matchedDorm,
+                    roomNumber: String(remoteProfile.room_number),
+                    phone: remoteProfile.phone || user.phone || "",
+                    note: ""
+                  };
+                  setSavedAddress(addr);
+                  setSavedPlace(true);
+                  setCurrentDorm(matchedDorm);
+                  try {
+                    localStorage.setItem(`behind_customer_address_${remoteProfile.id || remoteProfile.username}`, JSON.stringify(addr));
+                    localStorage.setItem("behind_customer_address", JSON.stringify(addr));
+                  } catch (e) {}
+                } else {
+                  const userKey = `behind_customer_address_${user.id || user.username}`;
+                  const storedAddr = localStorage.getItem(userKey) || localStorage.getItem("behind_customer_address");
+                  if (storedAddr) {
+                    const parsed = JSON.parse(storedAddr);
+                    if (parsed?.dormitory && parsed?.roomNumber) {
+                      setSavedAddress(parsed);
+                      setSavedPlace(true);
+                      if (parsed.dormitory) setCurrentDorm(parsed.dormitory);
+                    }
                   }
                 }
-              } catch (e) {}
+              } catch (e) {
+                console.warn("Login sync error:", e);
+              }
+              loadCustomerOrders();
               if (pendingReturnScreen) {
                 const target = pendingReturnScreen;
                 setPendingReturnScreen(null);

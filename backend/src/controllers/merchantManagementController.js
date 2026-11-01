@@ -44,6 +44,16 @@ exports.updateStatus = async (req, res) => {
 };
 
 // --- 2. Menu Controllers ---
+exports.getMenus = async (req, res) => {
+  try {
+    const merchantId = req.user.id;
+    const menus = await repo.getMerchantMenus(merchantId);
+    res.status(200).json({ success: true, data: menus });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
 exports.createMenu = async (req, res) => {
   try {
     const merchantId = req.user.id;
@@ -126,6 +136,26 @@ exports.createOptionChoice = async (req, res) => {
     const { name, extra_price } = req.body;
     const choice = await repo.createOptionChoice(group_id, { name, extra_price });
     res.status(201).json({ success: true, data: choice[0] });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+exports.deleteOptionGroup = async (req, res) => {
+  try {
+    const { group_id } = req.params;
+    await repo.deleteOptionGroup(group_id);
+    res.status(200).json({ success: true, message: 'Option group deleted' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+exports.deleteOptionChoice = async (req, res) => {
+  try {
+    const { choice_id } = req.params;
+    await repo.deleteOptionChoice(choice_id);
+    res.status(200).json({ success: true, message: 'Option choice deleted' });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }

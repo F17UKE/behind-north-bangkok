@@ -41,11 +41,33 @@ router.get('/me', verifyToken, checkRole(['CUSTOMER', 'MERCHANT', 'RIDER', 'ADMI
         // ลบรหัสผ่านทิ้งก่อนส่งกลับไปหน้าบ้าน
         delete profile.password_hash;
 
-        res.status(200).json({ profile });
+        res.status(200).json({ success: true, profile });
 
     } catch (error) {
         console.error('Get profile error:', error);
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// [PUT] /api/users/profile (สำหรับลูกค้าบันทึกหอพัก เลขห้อง และเบอร์โทรลง Database จริง)
+router.put('/profile', verifyToken, checkRole(['CUSTOMER']), async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { dormitory_id, room_number, phone } = req.body;
+
+        const updateData = {};
+        if (dormitory_id !== undefined) updateData.dormitory_id = dormitory_id ? Number(dormitory_id) : null;
+        if (room_number !== undefined) updateData.room_number = room_number ? String(room_number).trim() : null;
+        if (phone !== undefined) updateData.phone = phone ? String(phone).trim() : null;
+
+        await customerRepo.updateCustomer(userId, updateData);
+        const profile = await customerRepo.findCustomerById(userId);
+        if (profile) delete profile.password_hash;
+
+        res.status(200).json({ success: true, message: 'Profile updated successfully', profile });
+    } catch (error) {
+        console.error('Update profile error:', error);
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 

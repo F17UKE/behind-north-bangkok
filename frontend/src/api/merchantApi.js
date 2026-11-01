@@ -100,6 +100,42 @@ export const merchantApi = {
   async toggleRiderStatus(riderId, is_active) {
     const res = await api.patch(`/merchant-management/riders/${riderId}/status`, { is_active }, {}, "MERCHANT");
     return res?.data || res;
+  },
+
+  // ดึงเมนูทั้งหมดของร้านค้าตัวเอง (รวมเมนูที่ปิดขาย และรวม option groups & choices)
+  async getMyMenus() {
+    const res = await api.get("/merchant-management/menus", {}, "MERCHANT");
+    return res?.data || [];
+  },
+
+  // อัพโหลดรูปภาพเมนูไปยัง Supabase Storage
+  async uploadMenuImage(file) {
+    const formData = new FormData();
+    formData.append("image", file);
+    const res = await api.post("/upload/menu-image", formData, {}, "MERCHANT");
+    return res?.imageUrl || res?.data?.imageUrl || null;
+  },
+
+  // จัดการกลุ่มตัวเลือก (Option Groups)
+  async createOptionGroup(menuId, groupData) {
+    const res = await api.post(`/merchant-management/menus/${menuId}/option-groups`, groupData, {}, "MERCHANT");
+    return res?.data || res;
+  },
+
+  async deleteOptionGroup(groupId) {
+    const res = await api.delete(`/merchant-management/menus/option-groups/${groupId}`, {}, "MERCHANT");
+    return res?.data || res;
+  },
+
+  // จัดการตัวเลือกย่อย (Option Choices)
+  async createOptionChoice(groupId, choiceData) {
+    const res = await api.post(`/merchant-management/menus/option-groups/${groupId}/choices`, choiceData, {}, "MERCHANT");
+    return res?.data || res;
+  },
+
+  async deleteOptionChoice(choiceId) {
+    const res = await api.delete(`/merchant-management/menus/choices/${choiceId}`, {}, "MERCHANT");
+    return res?.data || res;
   }
 };
 

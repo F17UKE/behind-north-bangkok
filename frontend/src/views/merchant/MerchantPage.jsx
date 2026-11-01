@@ -996,24 +996,24 @@ function MerchantDelivery({ orders, deliveryFee, setDeliveryFee, onBack, loadMer
             <small style={{ color: "#64748b", display: "block", marginBottom: "10px" }}>
               กดเลือกราคาเพื่อนำไปใช้กับทุกซอยโดยอัตโนมัติ
             </small>
-            <div style={{ display: "flex", gap: "8px" }}>
-              {[10, 15, 20, 25].map(amt => (
+            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+              {[0, 10, 15, 20, 25].map(amt => (
                 <button
                   key={amt}
                   onClick={() => handleSetAllFees(amt)}
                   style={{
-                    flex: 1,
-                    background: "#f1f5f9",
-                    color: "#334155",
-                    border: "1px solid #cbd5e1",
+                    flex: amt === 0 ? "1.2" : "1",
+                    background: amt === 0 ? "#ecfdf5" : "#f1f5f9",
+                    color: amt === 0 ? "#059669" : "#334155",
+                    border: amt === 0 ? "1px solid #a7f3d0" : "1px solid #cbd5e1",
                     borderRadius: "8px",
-                    padding: "8px",
-                    fontSize: "13px",
+                    padding: "8px 6px",
+                    fontSize: "12px",
                     fontWeight: 700,
                     cursor: "pointer"
                   }}
                 >
-                  ฿{amt}
+                  {amt === 0 ? "฿0 (ฟรีค่าส่ง)" : `฿${amt}`}
                 </button>
               ))}
             </div>
@@ -1356,6 +1356,8 @@ function MerchantMenus({ merchant, onBack }) {
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
   const [description, setDescription] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [notice, setNotice] = useState("");
 
@@ -1364,7 +1366,20 @@ function MerchantMenus({ merchant, onBack }) {
   const [editName, setEditName] = useState("");
   const [editPrice, setEditPrice] = useState("");
   const [editDesc, setEditDesc] = useState("");
+  const [editImageUrl, setEditImageUrl] = useState("");
+  const [uploadingEditImage, setUploadingEditImage] = useState(false);
   const [submittingEdit, setSubmittingEdit] = useState(false);
+
+  // Option Group & Choice Form State
+  const [newGroupName, setNewGroupName] = useState("");
+  const [newGroupRequired, setNewGroupRequired] = useState(false);
+  const [newGroupMultiple, setNewGroupMultiple] = useState(false);
+  const [addingGroup, setAddingGroup] = useState(false);
+
+  const [activeGroupId, setActiveGroupId] = useState(null);
+  const [newChoiceName, setNewChoiceName] = useState("");
+  const [newChoicePrice, setNewChoicePrice] = useState("0");
+  const [addingChoice, setAddingChoice] = useState(false);
 
   useEffect(() => {
     loadMenus();
@@ -1373,14 +1388,60 @@ function MerchantMenus({ merchant, onBack }) {
   async function loadMenus() {
     setLoading(true);
     try {
-      if (merchant?.id) {
-        const data = await merchantApi.getMerchantMenu(merchant.id);
-        if (Array.isArray(data)) setMenus(data);
+      // ดึงเมนูทั้งหมดของร้านค้าพร้อม option groups และ choices
+      const data = await merchantApi.getMyMenus();
+      if (Array.isArray(data)) {
+        setMenus(data);
+        // หากกำลังเปิด Edit Modal เมนูไหนอยู่ ให้ update ข้อมูลล่าสุดด้วย
+        if (editingMenu) {
+          const fresh = data.find(m => m.id === editingMenu.id);
+          if (fresh) setEditingMenu(fresh);
+        }
       }
     } catch (err) {
-      console.warn("Could not load merchant menus:", err);
+      console.warn("Could not load my menus:", err);
+      // Fallback
+      if (merchant?.id) {
+        try {
+          const fallback = await merchantApi.getMerchantMenu(merchant.id);
+          if (Array.isArray(fallback)) setMenus(fallback);
+        } catch (e) {}
+      }
     } finally {
       setLoading(false);
+    }
+  }
+
+  // อัพโหลดรูปภาพเมนูใหม่
+  async function handleImageUpload(e, isEdit = false) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (isEdit) {
+      setUploadingEditImage(true);
+    } else {
+      setUploadingImage(true);
+    }
+
+    try {
+      const uploadedUrl = await merchantApi.uploadMenuImage(file);
+      if (uploadedUrl) {
+        if (isEdit) {
+          setEditImageUrl(uploadedUrl);
+        } else {
+          setImageUrl(uploadedUrl);
+        }
+        setNotice("✅ อัปโหลดรูปภาพสำเร็จ!");
+        setTimeout(() => setNotice(""), 3000);
+      }
+    } catch (err) {
+      alert("ไม่สามารถอัปโหลดรูปภาพได้: " + (err?.response?.data?.error || err.message));
+    } finally {
+      if (isEdit) {
+        setUploadingEditImage(false);
+      } else {
+        setUploadingImage(false);
+      }
     }
   }
 
@@ -1393,14 +1454,16 @@ function MerchantMenus({ merchant, onBack }) {
         name: name.trim(),
         price: parseFloat(price),
         description: description.trim() || undefined,
+        image_url: imageUrl || undefined,
         is_available: true
       });
       setNotice("✅ เพิ่มเมนูอาหารสำเร็จ!");
       setName("");
       setPrice("");
       setDescription("");
+      setImageUrl("");
       setShowAddModal(false);
-      loadMenus();
+      await loadMenus();
       setTimeout(() => setNotice(""), 3000);
     } catch (err) {
       alert("ไม่สามารถเพิ่มเมนูได้: " + (err?.response?.data?.error || err.message));
@@ -1414,6 +1477,11 @@ function MerchantMenus({ merchant, onBack }) {
     setEditName(item.name || "");
     setEditPrice(item.price || "");
     setEditDesc(item.description || "");
+    setEditImageUrl(item.image_url || "");
+    setNewGroupName("");
+    setNewChoiceName("");
+    setNewChoicePrice("0");
+    setActiveGroupId(null);
   }
 
   async function handleUpdateMenu(e) {
@@ -1424,11 +1492,12 @@ function MerchantMenus({ merchant, onBack }) {
       await merchantApi.updateMenu(editingMenu.id, {
         name: editName.trim(),
         price: parseFloat(editPrice),
-        description: editDesc.trim() || undefined
+        description: editDesc.trim() || undefined,
+        image_url: editImageUrl || undefined
       });
-      setNotice("✅ แก้ไขข้อมูลเมนูอาหารสำเร็จ!");
+      setNotice("✅ บันทึกข้อมูลเมนูสำเร็จ!");
       setEditingMenu(null);
-      loadMenus();
+      await loadMenus();
       setTimeout(() => setNotice(""), 3000);
     } catch (err) {
       alert("ไม่สามารถแก้ไขเมนูได้: " + (err?.response?.data?.error || err.message));
@@ -1447,12 +1516,86 @@ function MerchantMenus({ merchant, onBack }) {
   }
 
   async function handleDelete(menuId) {
-    if (!confirm("คุณแน่ใจว่าต้องการลบเมนูนี้ใช่หรือไม่?")) return;
+    if (!confirm("คุณแน่ใจว่าต้องการลบเมนูนี้ใช่หรือไม่? ข้อมูลและตัวเลือกทั้งหมดจะถูกลบอย่างถาวร")) return;
     try {
       await merchantApi.deleteMenu(menuId);
       setMenus(current => current.filter(m => m.id !== menuId));
+      if (editingMenu?.id === menuId) setEditingMenu(null);
+      setNotice("✅ ลบเมนูอาหารเรียบร้อยแล้ว");
+      setTimeout(() => setNotice(""), 3000);
     } catch (err) {
-      console.warn("Delete error:", err);
+      alert("ไม่สามารถลบเมนูได้: " + (err?.response?.data?.error || err.message));
+    }
+  }
+
+  // จัดการกลุ่มตัวเลือก (Option Groups)
+  async function handleAddOptionGroup(e) {
+    e.preventDefault();
+    if (!newGroupName.trim() || !editingMenu) return;
+    setAddingGroup(true);
+    try {
+      await merchantApi.createOptionGroup(editingMenu.id, {
+        name: newGroupName.trim(),
+        is_required: Boolean(newGroupRequired),
+        allow_multiple: Boolean(newGroupMultiple)
+      });
+      setNewGroupName("");
+      setNewGroupRequired(false);
+      setNewGroupMultiple(false);
+      await loadMenus();
+      setNotice("✅ เพิ่มกลุ่มตัวเลือกสำเร็จ!");
+      setTimeout(() => setNotice(""), 3000);
+    } catch (err) {
+      alert("ไม่สามารถเพิ่มกลุ่มตัวเลือกได้: " + (err?.response?.data?.error || err.message));
+    } finally {
+      setAddingGroup(false);
+    }
+  }
+
+  async function handleDeleteOptionGroup(groupId) {
+    if (!confirm("ต้องการลบกลุ่มตัวเลือกนี้และตัวเลือกย่อยทั้งหมดใช่หรือไม่?")) return;
+    try {
+      await merchantApi.deleteOptionGroup(groupId);
+      await loadMenus();
+      setNotice("✅ ลบกลุ่มตัวเลือกแล้ว");
+      setTimeout(() => setNotice(""), 3000);
+    } catch (err) {
+      alert("ไม่สามารถลบกลุ่มตัวเลือกได้: " + (err?.response?.data?.error || err.message));
+    }
+  }
+
+  // จัดการตัวเลือกย่อย (Option Choices)
+  async function handleAddOptionChoice(e, groupId) {
+    e.preventDefault();
+    if (!newChoiceName.trim() || !groupId) return;
+    setAddingChoice(true);
+    try {
+      await merchantApi.createOptionChoice(groupId, {
+        name: newChoiceName.trim(),
+        extra_price: parseFloat(newChoicePrice) || 0
+      });
+      setNewChoiceName("");
+      setNewChoicePrice("0");
+      setActiveGroupId(null);
+      await loadMenus();
+      setNotice("✅ เพิ่มตัวเลือกสำเร็จ!");
+      setTimeout(() => setNotice(""), 3000);
+    } catch (err) {
+      alert("ไม่สามารถเพิ่มตัวเลือกได้: " + (err?.response?.data?.error || err.message));
+    } finally {
+      setAddingChoice(false);
+    }
+  }
+
+  async function handleDeleteOptionChoice(choiceId) {
+    if (!confirm("ต้องการลบตัวเลือกนี้ใช่หรือไม่?")) return;
+    try {
+      await merchantApi.deleteOptionChoice(choiceId);
+      await loadMenus();
+      setNotice("✅ ลบตัวเลือกแล้ว");
+      setTimeout(() => setNotice(""), 3000);
+    } catch (err) {
+      alert("ไม่สามารถลบตัวเลือกได้: " + (err?.response?.data?.error || err.message));
     }
   }
 
@@ -1461,7 +1604,7 @@ function MerchantMenus({ merchant, onBack }) {
       <TopBar title="จัดการเมนูอาหาร" subtitle={`${merchant?.store_name || "ร้านอาหาร"} (${menus.length} รายการ)`} onBack={onBack} />
       
       {notice && (
-        <div style={{ background: "#2f855a", color: "white", padding: "10px 14px", borderRadius: "10px", margin: "10px 12px", textAlign: "center", fontSize: "13px" }}>
+        <div style={{ background: "#2f855a", color: "white", padding: "10px 14px", borderRadius: "10px", margin: "10px 12px", textAlign: "center", fontSize: "13px", fontWeight: 600 }}>
           {notice}
         </div>
       )}
@@ -1469,10 +1612,13 @@ function MerchantMenus({ merchant, onBack }) {
       <div style={{ padding: "0 12px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
           <b style={{ fontSize: "16px", color: "#1e293b" }}>รายการอาหารของร้าน</b>
-          <small style={{ display: "block", color: "#64748b" }}>จัดการราคา แก้ไขข้อมูล และเปิด-ปิดการขาย</small>
+          <small style={{ display: "block", color: "#64748b" }}>จัดการราคา ตัวเลือก รูปภาพ และสถานะขาย</small>
         </div>
         <button
-          onClick={() => setShowAddModal(true)}
+          onClick={() => {
+            setShowAddModal(true);
+            setImageUrl("");
+          }}
           style={{
             background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
             color: "white",
@@ -1509,7 +1655,9 @@ function MerchantMenus({ merchant, onBack }) {
             borderRadius: "20px",
             padding: "24px",
             width: "100%",
-            maxWidth: "420px",
+            maxWidth: "440px",
+            maxHeight: "90vh",
+            overflowY: "auto",
             boxShadow: "0 20px 40px rgba(0,0,0,0.2)"
           }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
@@ -1548,7 +1696,80 @@ function MerchantMenus({ merchant, onBack }) {
                   placeholder="เช่น รสจัดจ้าน เสิร์ฟพร้อมน้ำซุป"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
+                  rows={2}
                 />
+              </div>
+
+              {/* อัปโหลดรูปภาพเมนู */}
+              <div className="auth-field-group">
+                <label>รูปภาพเมนูอาหาร</label>
+                <div style={{ display: "flex", alignItems: "center", gap: "12px", marginTop: "4px" }}>
+                  {imageUrl ? (
+                    <div style={{ position: "relative" }}>
+                      <img
+                        src={imageUrl}
+                        alt="Menu Preview"
+                        style={{ width: "64px", height: "64px", borderRadius: "10px", objectFit: "cover", border: "1px solid #e2e8f0" }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setImageUrl("")}
+                        style={{
+                          position: "absolute",
+                          top: -6,
+                          right: -6,
+                          background: "#ef4444",
+                          color: "white",
+                          border: "none",
+                          borderRadius: "50%",
+                          width: "20px",
+                          height: "20px",
+                          fontSize: "10px",
+                          cursor: "pointer"
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{
+                      width: "64px",
+                      height: "64px",
+                      borderRadius: "10px",
+                      background: "#f1f5f9",
+                      border: "1px dashed #cbd5e1",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "24px"
+                    }}>
+                      📷
+                    </div>
+                  )}
+
+                  <label style={{
+                    flex: 1,
+                    display: "inline-block",
+                    background: "#f8fafc",
+                    border: "1px solid #cbd5e1",
+                    borderRadius: "8px",
+                    padding: "8px 12px",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    color: "#334155",
+                    textAlign: "center",
+                    cursor: uploadingImage ? "not-allowed" : "pointer"
+                  }}>
+                    {uploadingImage ? "⏳ กำลังอัปโหลด..." : "📁 เลือกไฟล์รูปภาพ"}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      style={{ display: "none" }}
+                      disabled={uploadingImage}
+                      onChange={(e) => handleImageUpload(e, false)}
+                    />
+                  </label>
+                </div>
               </div>
 
               <div style={{ display: "flex", gap: "10px", marginTop: "8px" }}>
@@ -1570,7 +1791,7 @@ function MerchantMenus({ merchant, onBack }) {
                 </button>
                 <button
                   type="submit"
-                  disabled={submitting}
+                  disabled={submitting || uploadingImage}
                   style={{
                     flex: 2,
                     padding: "12px",
@@ -1591,7 +1812,7 @@ function MerchantMenus({ merchant, onBack }) {
         </div>
       )}
 
-      {/* Modal แก้ไขเมนูอาหาร (Pop-up การแก้ไขเมนู) */}
+      {/* Modal แก้ไขเมนูอาหาร พร้อมจัดการรูปภาพและกลุ่มตัวเลือก */}
       {editingMenu && (
         <div style={{
           position: "fixed",
@@ -1611,15 +1832,18 @@ function MerchantMenus({ merchant, onBack }) {
             borderRadius: "20px",
             padding: "24px",
             width: "100%",
-            maxWidth: "420px",
+            maxWidth: "480px",
+            maxHeight: "90vh",
+            overflowY: "auto",
             boxShadow: "0 20px 40px rgba(0,0,0,0.2)"
           }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-              <b style={{ fontSize: "18px", color: "#1e293b" }}>✏️ แก้ไขเมนูอาหาร</b>
+              <b style={{ fontSize: "18px", color: "#1e293b" }}>✏️ แก้ไขเมนูและตัวเลือก</b>
               <button onClick={() => setEditingMenu(null)} style={{ border: "none", background: "none", fontSize: "18px", cursor: "pointer", color: "#64748b" }}>✕</button>
             </div>
 
-            <form onSubmit={handleUpdateMenu} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+            {/* ฟอร์มแก้ไขข้อมูลทั่วไปของเมนู */}
+            <form onSubmit={handleUpdateMenu} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
               <div className="auth-field-group">
                 <label>ชื่อเมนูอาหาร *</label>
                 <input
@@ -1647,51 +1871,399 @@ function MerchantMenus({ merchant, onBack }) {
                 <textarea
                   value={editDesc}
                   onChange={(e) => setEditDesc(e.target.value)}
-                  rows={3}
+                  rows={2}
                 />
               </div>
 
-              <div style={{ display: "flex", gap: "10px", marginTop: "8px" }}>
-                <button
-                  type="button"
-                  onClick={() => setEditingMenu(null)}
-                  style={{
+              {/* อัปโหลดรูปภาพเมนูในโหมดแก้ไข */}
+              <div className="auth-field-group">
+                <label>รูปภาพเมนูอาหาร</label>
+                <div style={{ display: "flex", alignItems: "center", gap: "12px", marginTop: "4px" }}>
+                  {editImageUrl ? (
+                    <div style={{ position: "relative" }}>
+                      <img
+                        src={editImageUrl}
+                        alt="Menu"
+                        style={{ width: "64px", height: "64px", borderRadius: "10px", objectFit: "cover", border: "1px solid #e2e8f0" }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setEditImageUrl("")}
+                        style={{
+                          position: "absolute",
+                          top: -6,
+                          right: -6,
+                          background: "#ef4444",
+                          color: "white",
+                          border: "none",
+                          borderRadius: "50%",
+                          width: "20px",
+                          height: "20px",
+                          fontSize: "10px",
+                          cursor: "pointer"
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{
+                      width: "64px",
+                      height: "64px",
+                      borderRadius: "10px",
+                      background: "#f1f5f9",
+                      border: "1px dashed #cbd5e1",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "24px"
+                    }}>
+                      📷
+                    </div>
+                  )}
+
+                  <label style={{
                     flex: 1,
-                    padding: "12px",
-                    borderRadius: "10px",
-                    border: "1px solid #cbd5e1",
+                    display: "inline-block",
                     background: "#f8fafc",
-                    color: "#475569",
+                    border: "1px solid #cbd5e1",
+                    borderRadius: "8px",
+                    padding: "8px 12px",
+                    fontSize: "12px",
                     fontWeight: 600,
-                    cursor: "pointer"
-                  }}
-                >
-                  ยกเลิก
-                </button>
+                    color: "#334155",
+                    textAlign: "center",
+                    cursor: uploadingEditImage ? "not-allowed" : "pointer"
+                  }}>
+                    {uploadingEditImage ? "⏳ กำลังอัปโหลด..." : "📁 เปลี่ยนรูปภาพ"}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      style={{ display: "none" }}
+                      disabled={uploadingEditImage}
+                      onChange={(e) => handleImageUpload(e, true)}
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: "10px", marginTop: "4px" }}>
                 <button
                   type="submit"
-                  disabled={submittingEdit}
+                  disabled={submittingEdit || uploadingEditImage}
                   style={{
-                    flex: 2,
-                    padding: "12px",
+                    flex: 1,
+                    padding: "10px",
                     borderRadius: "10px",
                     border: "none",
                     background: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
                     color: "white",
                     fontWeight: 700,
-                    cursor: "pointer",
-                    boxShadow: "0 4px 12px rgba(37, 99, 235, 0.25)"
+                    fontSize: "13px",
+                    cursor: "pointer"
                   }}
                 >
-                  {submittingEdit ? "กำลังบันทึก..." : "บันทึกการแก้ไข"}
+                  {submittingEdit ? "กำลังบันทึก..." : "💾 บันทึกข้อมูลเมนู"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDelete(editingMenu.id)}
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: "10px",
+                    border: "1px solid #fecaca",
+                    background: "#fef2f2",
+                    color: "#dc2626",
+                    fontWeight: 700,
+                    fontSize: "13px",
+                    cursor: "pointer"
+                  }}
+                >
+                  ลบเมนูนี้
                 </button>
               </div>
             </form>
+
+            <hr style={{ border: "none", borderTop: "1px solid #e2e8f0", margin: "20px 0" }} />
+
+            {/* จัดการกลุ่มตัวเลือก (Option Groups & Choices) */}
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+                <div>
+                  <b style={{ fontSize: "15px", color: "#1e293b", display: "block" }}>⚙️ ตัวเลือกของเมนูนี้</b>
+                  <small style={{ color: "#64748b" }}>เช่น ระดับความเผ็ด, ท็อปปิ้งเสริม, ประเภทเส้น</small>
+                </div>
+              </div>
+
+              {/* รายการกลุ่มตัวเลือกเดิม */}
+              {editingMenu.option_groups && editingMenu.option_groups.length > 0 ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginBottom: "16px" }}>
+                  {editingMenu.option_groups.map((group) => (
+                    <div
+                      key={group.id}
+                      style={{
+                        border: "1px solid #e2e8f0",
+                        borderRadius: "12px",
+                        padding: "12px",
+                        background: "#f8fafc"
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                        <div>
+                          <b style={{ fontSize: "14px", color: "#1e293b" }}>{group.name}</b>
+                          <div style={{ display: "flex", gap: "6px", marginTop: "2px" }}>
+                            <span style={{
+                              fontSize: "10px",
+                              padding: "2px 6px",
+                              borderRadius: "4px",
+                              background: group.is_required ? "#fee2e2" : "#f1f5f9",
+                              color: group.is_required ? "#dc2626" : "#64748b",
+                              fontWeight: 600
+                            }}>
+                              {group.is_required ? "จำเป็นต้องเลือก" : "ไม่บังคับ"}
+                            </span>
+                            <span style={{
+                              fontSize: "10px",
+                              padding: "2px 6px",
+                              borderRadius: "4px",
+                              background: "#e0f2fe",
+                              color: "#0369a1",
+                              fontWeight: 600
+                            }}>
+                              {group.allow_multiple ? "เลือกได้หลายอย่าง" : "เลือกได้ข้อเดียว"}
+                            </span>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteOptionGroup(group.id)}
+                          style={{
+                            background: "#fee2e2",
+                            color: "#dc2626",
+                            border: "1px solid #fca5a5",
+                            borderRadius: "6px",
+                            padding: "4px 8px",
+                            fontSize: "11px",
+                            fontWeight: 600,
+                            cursor: "pointer"
+                          }}
+                        >
+                          ลบกลุ่ม
+                        </button>
+                      </div>
+
+                      {/* ตัวเลือกย่อยในกลุ่มนี้ */}
+                      <div style={{ paddingLeft: "6px", display: "flex", flexDirection: "column", gap: "4px", marginBottom: "8px" }}>
+                        {group.choices && group.choices.length > 0 ? (
+                          group.choices.map((choice) => (
+                            <div
+                              key={choice.id}
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                                background: "white",
+                                padding: "6px 10px",
+                                borderRadius: "6px",
+                                border: "1px solid #e2e8f0",
+                                fontSize: "12px"
+                              }}
+                            >
+                              <span style={{ color: "#334155" }}>{choice.name}</span>
+                              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                <span style={{ color: choice.extra_price > 0 ? "#10b981" : "#64748b", fontWeight: 600 }}>
+                                  {choice.extra_price > 0 ? `+฿${choice.extra_price}` : "+฿0"}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteOptionChoice(choice.id)}
+                                  style={{
+                                    border: "none",
+                                    background: "none",
+                                    color: "#94a3b8",
+                                    cursor: "pointer",
+                                    fontSize: "12px",
+                                    padding: "0 2px"
+                                  }}
+                                  title="ลบตัวเลือกนี้"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div style={{ fontSize: "12px", color: "#94a3b8", fontStyle: "italic", padding: "4px 0" }}>
+                            ยังไม่มีตัวเลือกในกลุ่มนี้
+                          </div>
+                        )}
+                      </div>
+
+                      {/* ฟอร์มเพิ่มตัวเลือกย่อยในกลุ่ม */}
+                      {activeGroupId === group.id ? (
+                        <form
+                          onSubmit={(e) => handleAddOptionChoice(e, group.id)}
+                          style={{
+                            background: "white",
+                            padding: "8px",
+                            borderRadius: "8px",
+                            border: "1px solid #cbd5e1",
+                            display: "flex",
+                            gap: "6px",
+                            alignItems: "center"
+                          }}
+                        >
+                          <input
+                            type="text"
+                            placeholder="ชื่อตัวเลือก เช่น เผ็ดมาก / ไข่ดาว"
+                            value={newChoiceName}
+                            onChange={(e) => setNewChoiceName(e.target.value)}
+                            required
+                            style={{ flex: 2, padding: "5px 8px", fontSize: "12px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
+                          />
+                          <input
+                            type="number"
+                            placeholder="+฿"
+                            value={newChoicePrice}
+                            onChange={(e) => setNewChoicePrice(e.target.value)}
+                            min="0"
+                            step="1"
+                            style={{ width: "55px", padding: "5px 6px", fontSize: "12px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
+                          />
+                          <button
+                            type="submit"
+                            disabled={addingChoice}
+                            style={{
+                              background: "#10b981",
+                              color: "white",
+                              border: "none",
+                              borderRadius: "6px",
+                              padding: "6px 10px",
+                              fontSize: "11px",
+                              fontWeight: 700,
+                              cursor: "pointer"
+                            }}
+                          >
+                            เพิ่ม
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setActiveGroupId(null)}
+                            style={{
+                              background: "none",
+                              border: "none",
+                              color: "#64748b",
+                              cursor: "pointer",
+                              fontSize: "12px"
+                            }}
+                          >
+                            ยกเลิก
+                          </button>
+                        </form>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveGroupId(group.id);
+                            setNewChoiceName("");
+                            setNewChoicePrice("0");
+                          }}
+                          style={{
+                            background: "white",
+                            color: "#2563eb",
+                            border: "1px dashed #93c5fd",
+                            borderRadius: "6px",
+                            padding: "5px 10px",
+                            fontSize: "11px",
+                            fontWeight: 600,
+                            cursor: "pointer",
+                            width: "100%"
+                          }}
+                        >
+                          ＋ เพิ่มตัวเลือกในกลุ่มนี้
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{
+                  background: "#f8fafc",
+                  border: "1px dashed #cbd5e1",
+                  borderRadius: "10px",
+                  padding: "12px",
+                  textAlign: "center",
+                  color: "#64748b",
+                  fontSize: "12px",
+                  marginBottom: "16px"
+                }}>
+                  เมนูนี้ยังไม่มีกลุ่มตัวเลือก
+                </div>
+              )}
+
+              {/* ฟอร์มเพิ่มกลุ่มตัวเลือกใหม่ */}
+              <form
+                onSubmit={handleAddOptionGroup}
+                style={{
+                  background: "#f1f5f9",
+                  padding: "12px",
+                  borderRadius: "10px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "8px"
+                }}
+              >
+                <b style={{ fontSize: "13px", color: "#334155" }}>＋ สร้างกลุ่มตัวเลือกใหม่</b>
+                <input
+                  type="text"
+                  placeholder="เช่น ระดับความเผ็ด, เพิ่มท็อปปิ้ง"
+                  value={newGroupName}
+                  onChange={(e) => setNewGroupName(e.target.value)}
+                  required
+                  style={{ padding: "7px 10px", fontSize: "12px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
+                />
+                <div style={{ display: "flex", gap: "14px", fontSize: "12px", color: "#475569" }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: "4px", cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={newGroupRequired}
+                      onChange={(e) => setNewGroupRequired(e.target.checked)}
+                    />
+                    จำเป็นต้องเลือก
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: "4px", cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={newGroupMultiple}
+                      onChange={(e) => setNewGroupMultiple(e.target.checked)}
+                    />
+                    เลือกได้หลายข้อ
+                  </label>
+                </div>
+                <button
+                  type="submit"
+                  disabled={addingGroup}
+                  style={{
+                    background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "6px",
+                    padding: "8px",
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    cursor: "pointer"
+                  }}
+                >
+                  {addingGroup ? "กำลังสร้างกลุ่ม..." : "＋ บันทึกกลุ่มตัวเลือก"}
+                </button>
+              </form>
+            </div>
           </div>
         </div>
       )}
 
-      {/* รายการเมนู */}
+      {/* รายการเมนูทั้งหมดของร้านค้า */}
       <div style={{ padding: "0 12px" }}>
         {menus.length > 0 ? (
           menus.map((item) => (
@@ -1700,22 +2272,65 @@ function MerchantMenus({ merchant, onBack }) {
               style={{
                 background: "white",
                 borderRadius: "14px",
-                padding: "14px 16px",
+                padding: "12px 14px",
                 marginBottom: "10px",
                 border: "1px solid #e2e8f0",
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.03)"
+                boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
+                gap: "10px"
               }}
             >
-              <div>
-                <b style={{ fontSize: "15px", color: "#1e293b", display: "block" }}>{item.name}</b>
-                <small style={{ color: "#64748b", display: "block", marginBottom: "4px" }}>{item.description || "ปรุงสดใหม่ตามสั่ง"}</small>
-                <strong style={{ color: "#10b981", fontSize: "15px" }}>฿{item.price}</strong>
+              <div style={{ display: "flex", alignItems: "center", gap: "12px", flex: 1 }}>
+                {item.image_url ? (
+                  <img
+                    src={item.image_url}
+                    alt={item.name}
+                    style={{
+                      width: "56px",
+                      height: "56px",
+                      borderRadius: "10px",
+                      objectFit: "cover",
+                      border: "1px solid #e2e8f0",
+                      flexShrink: 0
+                    }}
+                  />
+                ) : (
+                  <div style={{
+                    width: "56px",
+                    height: "56px",
+                    borderRadius: "10px",
+                    background: "#f1f5f9",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "22px",
+                    flexShrink: 0
+                  }}>
+                    🍲
+                  </div>
+                )}
+
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <b style={{ fontSize: "14px", color: "#1e293b", display: "block", textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
+                    {item.name}
+                  </b>
+                  <small style={{ color: "#64748b", display: "block", marginBottom: "2px", textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
+                    {item.description || "ปรุงสดใหม่ตามสั่ง"}
+                  </small>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <strong style={{ color: "#10b981", fontSize: "14px" }}>฿{item.price}</strong>
+                    {item.option_groups && item.option_groups.length > 0 && (
+                      <span style={{ fontSize: "10px", color: "#6366f1", background: "#eef2ff", padding: "1px 6px", borderRadius: "4px", fontWeight: 600 }}>
+                        {item.option_groups.length} กลุ่มตัวเลือก
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
 
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
                 <button
                   onClick={() => openEditModal(item)}
                   style={{
@@ -1728,9 +2343,9 @@ function MerchantMenus({ merchant, onBack }) {
                     fontWeight: 600,
                     cursor: "pointer"
                   }}
-                  title="แก้ไขเมนู"
+                  title="แก้ไขเมนูและตัวเลือก"
                 >
-                  ✏️ แก้ไข
+                  แก้ไข
                 </button>
                 <button
                   onClick={() => handleToggle(item.id, item.is_available)}
@@ -1739,27 +2354,29 @@ function MerchantMenus({ merchant, onBack }) {
                     color: item.is_available ? "#059669" : "#dc2626",
                     border: item.is_available ? "1px solid #a7f3d0" : "1px solid #fecaca",
                     borderRadius: "8px",
-                    padding: "6px 10px",
-                    fontSize: "12px",
+                    padding: "6px 8px",
+                    fontSize: "11px",
                     fontWeight: 600,
                     cursor: "pointer"
                   }}
                 >
-                  {item.is_available ? "เปิดขาย" : "หมดชั่วคราว"}
+                  {item.is_available ? "เปิดขาย" : "หมด"}
                 </button>
                 <button
                   onClick={() => handleDelete(item.id)}
                   style={{
-                    background: "none",
-                    border: "none",
-                    color: "#94a3b8",
+                    background: "#fef2f2",
+                    border: "1px solid #fecaca",
+                    color: "#dc2626",
                     cursor: "pointer",
-                    fontSize: "16px",
-                    padding: "4px 8px"
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    padding: "6px 10px",
+                    borderRadius: "8px"
                   }}
                   title="ลบเมนู"
                 >
-                  🗑️
+                  ลบ
                 </button>
               </div>
             </div>

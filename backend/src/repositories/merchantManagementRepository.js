@@ -24,6 +24,33 @@ class MerchantManagementRepository {
   }
 
   // --- 2. Menu Management ---
+  async getMerchantMenus(merchantId) {
+    const menus = await db('MENU_ITEMS')
+      .where('merchant_id', merchantId)
+      .orderBy('id', 'asc');
+
+    const menuIds = menus.map(m => m.id);
+    if (menuIds.length === 0) return [];
+
+    const optionGroups = await db('MENU_OPTION_GROUPS')
+      .whereIn('menu_item_id', menuIds);
+    const groupIds = optionGroups.map(g => g.id);
+
+    const choices = groupIds.length > 0
+      ? await db('MENU_OPTION_CHOICES').whereIn('option_group_id', groupIds)
+      : [];
+
+    const groupsWithChoices = optionGroups.map(group => ({
+      ...group,
+      choices: choices.filter(c => c.option_group_id === group.id)
+    }));
+
+    return menus.map(menu => ({
+      ...menu,
+      option_groups: groupsWithChoices.filter(g => g.menu_item_id === menu.id)
+    }));
+  }
+
   async createMenuItem(merchantId, menuData) {
     return await db('MENU_ITEMS')
       .insert({ ...menuData, merchant_id: merchantId })
@@ -57,10 +84,22 @@ class MerchantManagementRepository {
       .returning('*');
   }
 
+  async deleteOptionGroup(groupId) {
+    return await db('MENU_OPTION_GROUPS')
+      .where('id', groupId)
+      .del();
+  }
+
   async createOptionChoice(groupId, choiceData) {
     return await db('MENU_OPTION_CHOICES')
       .insert({ ...choiceData, option_group_id: groupId })
       .returning('*');
+  }
+
+  async deleteOptionChoice(choiceId) {
+    return await db('MENU_OPTION_CHOICES')
+      .where('id', choiceId)
+      .del();
   }
 
   // --- 4. Delivery Fees Management ---
@@ -72,10 +111,9 @@ class MerchantManagementRepository {
   }
 
   async upsertDeliveryFee(merchantId, soiId, fee) {
-    // ใช้ onConflict สำหรับ Update หากมี soi_id นี้ของร้านค้านี้อยู่แล้ว
     return await db('DELIVERY_FEES')
       .insert({ merchant_id: merchantId, soi_id: soiId, fee: fee })
-      .onConflict(['merchant_id', 'soi_id']) // ต้องมีการทำ Composite Unique constraint ใน DB
+      .onConflict(['merchant_id', 'soi_id'])
       .merge(['fee'])
       .returning('*');
   }
