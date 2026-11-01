@@ -201,6 +201,9 @@ export default function MerchantPage() {
       } else if (status === "READY_FOR_DELIVERY") {
         await orderApi.markReadyForDelivery(rawId).catch(() => orderApi.completeEntireOrder(rawId));
         setStatusNotice(`🛵 อัปเดตออเดอร์ ${id} พร้อมจัดส่งแล้ว`);
+      } else if (status === "COMPLETED") {
+        await orderApi.completeEntireOrder(rawId);
+        setStatusNotice(`✅ ออเดอร์ ${id} ลูกค้ามารับเรียบร้อยแล้ว (เสร็จสิ้น)`);
       } else if (status === "REJECTED_BY_MERCHANT") {
         await orderApi.rejectOrder(rawId, "ร้านค้าปฏิเสธออเดอร์");
         setStatusNotice(`✕ ปฏิเสธออเดอร์ ${id} เรียบร้อยแล้ว`);
@@ -612,7 +615,17 @@ function MerchantOrders({ orders, filter, setFilter, query, setQuery, onBack, up
                   </button>
                 )}
                 {o.status === "READY_FOR_DELIVERY" && (
-                  <span style={{ fontSize: "12px", color: "#059669", fontWeight: 600 }}>🛵 รอไรเดอร์มารับ</span>
+                  ((o.roomNumber && o.roomNumber.includes("รับเอง")) || (o.dormitory && o.dormitory.includes("รับเอง"))) ? (
+                    <button 
+                      className="accept-button" 
+                      onClick={() => updateOrder(o.id, "COMPLETED")} 
+                      style={{ background: "linear-gradient(135deg, #10b981 0%, #059669 100%)", color: "white" }}
+                    >
+                      ✅ ลูกค้ามารับอาหารแล้ว (เสร็จสิ้น)
+                    </button>
+                  ) : (
+                    <span style={{ fontSize: "12px", color: "#059669", fontWeight: 600 }}>🛵 รอไรเดอร์มารับ</span>
+                  )
                 )}
                 {o.status === "IN_DELIVERY" && (
                   <span style={{ fontSize: "12px", color: "#2563eb", fontWeight: 600 }}>🚴‍♂️ กำลังนำส่ง</span>

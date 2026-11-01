@@ -21,4 +21,14 @@ router.patch('/merchants/:merchant_id/approve', adminController.approveMerchant)
 // 4. ปฏิเสธ/ระงับร้านค้า
 router.patch('/merchants/:merchant_id/reject', adminController.rejectMerchant);
 
+// 5. ดึงรายการเมนูอาหารของร้านค้า
+router.get('/merchants/:merchant_id/menus', adminController.getMerchantMenus);
+
+// 6. ระงับ / ยกเลิกการระงับร้านค้า
+router.patch('/merchants/:merchant_id/suspend', adminController.toggleMerchantSuspension);
+
+// 7. รายการลูกค้าทั้งหมด และการระงับบัญชีลูกค้า
+router.get('/customers', adminController.getAllCustomers);
+router.patch('/customers/:customer_id/suspend', adminController.toggleCustomerSuspension);
+
 module.exports = router;

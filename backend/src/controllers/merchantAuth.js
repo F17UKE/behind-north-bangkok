@@ -98,6 +98,10 @@ const login = async (req, res) => {
             return res.status(401).json({ error: 'Invalid merchant credentials' });
         }
 
+        if (merchant.is_suspended) {
+            return res.status(403).json({ error: 'บัญชีร้านค้านี้ถูกระงับการใช้งานชั่วคราวโดยผู้ดูแลระบบ (Admin)' });
+        }
+
         const token = generateToken(merchant, 'MERCHANT');
 
         delete merchant.password_hash;

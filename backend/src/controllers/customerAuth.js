@@ -86,6 +86,10 @@ const login = async (req, res) => {
             return res.status(401).json({ error: 'Invalid username or password' });
         }
 
+        if (customer.is_suspended) {
+            return res.status(403).json({ error: 'บัญชีผู้ใช้นี้ถูกระงับการใช้งานชั่วคราวโดยผู้ดูแลระบบ (Admin)' });
+        }
+
         // ตรวจสอบรหัสผ่าน
         const isMatch = await comparePassword(password, customer.password_hash);
         if (!isMatch) {

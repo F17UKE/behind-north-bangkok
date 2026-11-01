@@ -144,7 +144,15 @@ export default function RiderPage() {
   }
 
   const activeOrders = orders.filter((o) => ["READY_FOR_DELIVERY", "IN_DELIVERY"].includes(o.status));
-  const historyOrders = orders.filter((o) => o.status === "COMPLETED");
+  // กรองเฉพาะออเดอร์ที่จัดส่งสำเร็จแล้วในวันนี้เท่านั้น
+  const historyOrders = orders.filter((o) => {
+    if (o.status !== "COMPLETED") return false;
+    const targetDate = o.updated_at || o.created_at;
+    if (!targetDate) return true;
+    const d = new Date(targetDate);
+    const now = new Date();
+    return d.toDateString() === now.toDateString();
+  });
 
   return (
     <MobileShell tone="orange">

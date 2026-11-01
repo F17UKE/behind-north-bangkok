@@ -24,6 +24,30 @@ export const adminApi = {
   async rejectMerchant(merchantId) {
     const res = await api.patch(`/admin/merchants/${merchantId}/reject`, null, {}, "ADMIN");
     return res?.data || res;
+  },
+
+  // ระงับ / ยกเลิกการระงับร้านค้าชั่วคราว
+  async toggleMerchantSuspension(merchantId, is_suspended) {
+    const res = await api.patch(`/admin/merchants/${merchantId}/suspend`, { is_suspended }, {}, "ADMIN");
+    return res?.data || res;
+  },
+
+  // ดึงเมนูอาหารของร้านค้าสำหรับ Admin
+  async getMerchantMenus(merchantId) {
+    const res = await api.get(`/admin/merchants/${merchantId}/menus`, {}, "ADMIN");
+    return res?.data || [];
+  },
+
+  // ดึงรายการลูกค้าทั้งหมดในระบบ
+  async getAllCustomers() {
+    const res = await api.get("/admin/customers", {}, "ADMIN");
+    return res?.data || [];
+  },
+
+  // ระงับ / ยกเลิกการระงับลูกค้าชั่วคราว
+  async toggleCustomerSuspension(customerId, is_suspended) {
+    const res = await api.patch(`/admin/customers/${customerId}/suspend`, { is_suspended }, {}, "ADMIN");
+    return res?.data || res;
   }
 };
 

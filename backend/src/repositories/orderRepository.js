@@ -2,15 +2,21 @@
 const knex = require('../db');
 
 const createOrder = async (orderData) => {
-    const { customerId, merchantId, dormitoryId, roomNumber, items } = orderData;
+    const { customerId, merchantId, dormitoryId, roomNumber, items, deliveryType, delivery_type } = orderData;
+    const isPickup = (deliveryType === 'PICKUP' || delivery_type === 'PICKUP' || String(roomNumber).includes('รับเองที่หน้าร้าน'));
 
     return await knex.transaction(async (trx) => {
-        // 1. Snapshot: ค้นหาค่าส่ง
-        const dormitory = await trx('DORMITORIES').where('id', dormitoryId).first();
-        const deliveryFeeRecord = await trx('DELIVERY_FEES')
-            .where({ merchant_id: merchantId, soi_id: dormitory.soi_id })
-            .first();
-        const deliveryFee = deliveryFeeRecord ? parseFloat(deliveryFeeRecord.fee) : 0;
+        // 1. Snapshot: ค้นหาค่าส่ง (ถ้ารับเองที่หน้าร้าน ค่าส่งเป็น 0 เสมอ)
+        let deliveryFee = 0;
+        if (!isPickup && dormitoryId) {
+            const dormitory = await trx('DORMITORIES').where('id', dormitoryId).first();
+            if (dormitory) {
+                const deliveryFeeRecord = await trx('DELIVERY_FEES')
+                    .where({ merchant_id: merchantId, soi_id: dormitory.soi_id })
+                    .first();
+                deliveryFee = deliveryFeeRecord ? parseFloat(deliveryFeeRecord.fee) : 0;
+            }
+        }
 
         let totalAmount = deliveryFee;
 
@@ -41,8 +47,8 @@ const createOrder = async (orderData) => {
             merchant_order_number: newOrderNumber,
             customer_id: customerId,
             merchant_id: merchantId,
-            delivery_dormitory_id: dormitoryId,
-            delivery_room_number: roomNumber,
+            delivery_dormitory_id: isPickup ? null : (dormitoryId || null),
+            delivery_room_number: isPickup ? '🛍️ รับเองที่หน้าร้าน (Self Pick-up)' : roomNumber,
             delivery_fee: deliveryFee,
             total_amount: 0,
             status: 'PENDING_ACCEPT',
