@@ -109,19 +109,24 @@ export default function CustomerPage() {
       });
     }
 
-    // โหลดที่อยู่ที่เคยบันทึกไว้ใน LocalStorage
-    try {
-      const storedAddr = localStorage.getItem("behind_customer_address");
-      if (storedAddr) {
-        const parsed = JSON.parse(storedAddr);
-        if (parsed?.dormitory && parsed?.roomNumber) {
-          setSavedAddress(parsed);
-          setSavedPlace(true);
-          if (parsed.dormitory) setCurrentDorm(parsed.dormitory);
+    if (savedUser) {
+      try {
+        const userKey = `behind_customer_address_${savedUser.id || savedUser.username}`;
+        const storedAddr = localStorage.getItem(userKey) || localStorage.getItem("behind_customer_address");
+        if (storedAddr) {
+          const parsed = JSON.parse(storedAddr);
+          if (parsed?.dormitory && parsed?.roomNumber) {
+            setSavedAddress(parsed);
+            setSavedPlace(true);
+            if (parsed.dormitory) setCurrentDorm(parsed.dormitory);
+          }
         }
+      } catch (e) {
+        console.log("Could not load stored address:", e);
       }
-    } catch (e) {
-      console.log("Could not load stored address:", e);
+    } else {
+      setSavedAddress(null);
+      setSavedPlace(false);
     }
 
     // โหลดร้านค้าจริงจาก Backend API
@@ -540,6 +545,12 @@ export default function CustomerPage() {
             onLogout={() => {
               authApi.logout("CUSTOMER");
               setProfile({ name: "", phone: "", email: "", isGuest: true });
+              setSavedAddress(null);
+              setSavedPlace(false);
+              setOrders([]);
+              try {
+                localStorage.removeItem("behind_customer_address");
+              } catch (e) {}
               setApiNotice("ออกจากระบบเรียบร้อยแล้ว");
               setTimeout(() => setApiNotice(""), 2500);
             }}
@@ -567,6 +578,10 @@ export default function CustomerPage() {
                 setProfile(prev => ({ ...prev, phone: addr.phone }));
               }
               try {
+                const user = authApi.getCurrentUser("CUSTOMER");
+                if (user?.id || user?.username) {
+                  localStorage.setItem(`behind_customer_address_${user.id || user.username}`, JSON.stringify(addr));
+                }
                 localStorage.setItem("behind_customer_address", JSON.stringify(addr));
               } catch (e) {}
               setApiNotice("✅ บันทึกที่อยู่จัดส่งเรียบร้อยแล้ว!");
@@ -603,6 +618,18 @@ export default function CustomerPage() {
                 isGuest: false
               });
               loadCustomerOrders();
+              try {
+                const userKey = `behind_customer_address_${user.id || user.username}`;
+                const storedAddr = localStorage.getItem(userKey) || localStorage.getItem("behind_customer_address");
+                if (storedAddr) {
+                  const parsed = JSON.parse(storedAddr);
+                  if (parsed?.dormitory && parsed?.roomNumber) {
+                    setSavedAddress(parsed);
+                    setSavedPlace(true);
+                    if (parsed.dormitory) setCurrentDorm(parsed.dormitory);
+                  }
+                }
+              } catch (e) {}
               if (pendingReturnScreen) {
                 const target = pendingReturnScreen;
                 setPendingReturnScreen(null);
@@ -1199,12 +1226,20 @@ function Profile({ profile, savedAddress, onBack, onManageAddress, onOrders, onL
             <b>📍 ที่อยู่จัดส่งของฉัน (Delivery Address)</b>
             <small>หอพักและเลขห้องสำหรับให้ไรเดอร์จัดส่งอาหาร</small>
           </div>
-          <button className="section-edit-btn" onClick={onManageAddress}>
-            {savedAddress?.roomNumber ? "แก้ไข" : "ระบุที่อยู่"}
+          <button className="section-edit-btn" onClick={profile.isGuest ? onLogin : onManageAddress}>
+            {profile.isGuest ? "เข้าสู่ระบบเพื่อระบุที่อยู่" : (savedAddress?.roomNumber ? "แก้ไข" : "ระบุที่อยู่")}
           </button>
         </div>
 
-        {savedAddress?.roomNumber ? (
+        {profile.isGuest ? (
+          <div className="profile-address-empty">
+            <p>🔒 ยังไม่ได้เข้าสู่ระบบ</p>
+            <small>กรุณาเข้าสู่ระบบก่อนเพื่อจัดการข้อมูลที่อยู่จัดส่งและสั่งซื้ออาหาร</small>
+            <button className="btn-add-address" onClick={onLogin}>
+              🔑 เข้าสู่ระบบเพื่อจัดการที่อยู่จัดส่ง
+            </button>
+          </div>
+        ) : savedAddress?.roomNumber ? (
           <div className="profile-address-display">
             <div className="address-detail-row">
               <span className="addr-icon">🏢</span>
