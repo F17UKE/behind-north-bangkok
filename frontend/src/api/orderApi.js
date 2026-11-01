@@ -65,6 +65,12 @@ export const orderApi = {
     return res?.data || res;
   },
 
+  // ร้านค้าทำอาหารเสร็จ พร้อมจัดส่ง
+  async markReadyForDelivery(orderId) {
+    const res = await api.put(`/order-workflow/orders/${orderId}/ready`, {}, {}, "MERCHANT");
+    return res?.data || res;
+  },
+
   // KDS: ดึงออเดอร์ในครัว
   async getKitchenOrders() {
     const res = await api.get("/merchants/kds/orders", {}, "MERCHANT");

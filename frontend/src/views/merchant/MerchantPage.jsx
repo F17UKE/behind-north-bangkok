@@ -11,7 +11,7 @@ import MerchantLogin from "./MerchantLogin";
 
 export default function MerchantPage() {
   const [screen, setScreen] = useState("home");
-  const [orders, setOrders] = useState(merchantOrdersSeed);
+  const [orders, setOrders] = useState([]);
   const [orderFilter, setOrderFilter] = useState("all");
   const [deliveryFee, setDeliveryFee] = useState("10");
   const [query, setQuery] = useState("");
@@ -110,25 +110,47 @@ export default function MerchantPage() {
     authApi.logout("MERCHANT");
     setIsLoggedIn(false);
     setCurrentMerchant(null);
-    setOrders(merchantOrdersSeed);
+    setOrders([]);
   }
 
   async function loadMerchantOrders() {
     if (!authApi.isLoggedIn("MERCHANT")) return;
     try {
       const serverOrders = await orderApi.getMerchantOrders();
-      if (Array.isArray(serverOrders) && serverOrders.length > 0) {
-        const mapped = serverOrders.map(o => ({
-          id: o.order_code ? (o.order_code.startsWith("#") ? o.order_code : `#${o.order_code}`) : `#ORD${String(o.id).padStart(3, "0")}`,
-          rawId: o.id,
-          customer: o.customer_name || "นักศึกษา มจพ.",
-          total: parseFloat(o.total_amount || 0),
-          status: o.status,
-          items: Array.isArray(o.items) && o.items.length > 0 
-            ? o.items.map(it => typeof it === "string" ? it : `${it.name || "อาหาร"} x${it.quantity || 1}`) 
-            : ["รายการอาหาร"],
-          time: o.created_at ? new Date(o.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "now"
-        }));
+      if (Array.isArray(serverOrders)) {
+        const mapped = serverOrders.map(o => {
+          let itemsList = [];
+          if (Array.isArray(o.items) && o.items.length > 0) {
+            itemsList = o.items.map(it => {
+              if (typeof it === "string") return it;
+              const choiceStr = it.choices && it.choices.length > 0 ? ` (${it.choices.join(", ")})` : "";
+              const noteStr = it.note ? ` [หมายเหตุ: ${it.note}]` : "";
+              return `${it.name || "อาหาร"}${choiceStr} x${it.quantity || 1}${noteStr}`;
+            });
+          } else if (Array.isArray(o.items_summary) && o.items_summary.length > 0) {
+            itemsList = o.items_summary;
+          } else {
+            itemsList = ["รายการอาหาร"];
+          }
+
+          const orderCode = o.order_code 
+            ? (o.order_code.startsWith("#") ? o.order_code : `#${o.order_code}`) 
+            : `#ORD${String(o.id).padStart(3, "0")}`;
+
+          return {
+            id: orderCode,
+            rawId: o.id,
+            customer: o.customer_name || "นักศึกษา มจพ.",
+            customerPhone: o.customer_phone || "",
+            dormitory: o.dormitory_name || "",
+            roomNumber: o.delivery_room_number || "",
+            total: parseFloat(o.total_amount || 0),
+            deliveryFee: parseFloat(o.delivery_fee || 0),
+            status: o.status,
+            items: itemsList,
+            time: o.created_at ? new Date(o.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "เมื่อสักครู่"
+          };
+        });
         setOrders(mapped);
       }
     } catch (err) {
@@ -151,18 +173,22 @@ export default function MerchantPage() {
 
     try {
       if (status === "PREPARING") {
-        await orderApi.acceptOrder(rawId).catch(() => orderApi.startPreparing(rawId));
+        await orderApi.startPreparing(rawId).catch(() => orderApi.acceptOrder(rawId));
         setStatusNotice(`⚡ อัปเดตออเดอร์ ${id} กำลังทำอาหาร`);
       } else if (status === "READY_FOR_DELIVERY") {
-        await orderApi.completeEntireOrder(rawId);
+        await orderApi.markReadyForDelivery(rawId).catch(() => orderApi.completeEntireOrder(rawId));
         setStatusNotice(`🛵 อัปเดตออเดอร์ ${id} พร้อมจัดส่งแล้ว`);
+      } else if (status === "REJECTED_BY_MERCHANT") {
+        await orderApi.rejectOrder(rawId, "ร้านค้าปฏิเสธออเดอร์");
+        setStatusNotice(`✕ ปฏิเสธออเดอร์ ${id} เรียบร้อยแล้ว`);
       }
+      await loadMerchantOrders();
     } catch (err) {
       console.log("Order status update API notice:", err.message);
       setStatusNotice(`⚡ บันทึกสถานะ: ${statusLabel[status] || status}`);
+      setOrders((current) => current.map((o) => o.id === id ? { ...o, status } : o));
     }
 
-    setOrders((current) => current.map((o) => o.id === id ? { ...o, status } : o));
     setTimeout(() => setStatusNotice(""), 3000);
   }
 
@@ -411,16 +437,24 @@ function MerchantHome({ orders, go, query, setQuery, merchant, onLogout }) {
         <button onClick={() => go("orders")}>ดูทั้งหมด ({orders.length}) ›</button>
       </div>
 
-      {orders.slice(0, 5).map((o) => (
-        <button className="merchant-recent" key={o.id} onClick={() => go("orders")}>
-          <div className="food-thumb">🍛</div>
-          <div>
-            <b>{o.customer}</b>
-            <small>{o.id} · {statusLabel[o.status] || o.status}</small>
-          </div>
-          <strong>฿{o.total}</strong>
-        </button>
-      ))}
+      {orders.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "30px 16px", color: "#64748b", background: "white", borderRadius: "14px", margin: "10px 0" }}>
+          <div style={{ fontSize: "36px", marginBottom: "8px" }}>📦</div>
+          <b style={{ color: "#334155", display: "block" }}>ยังไม่มีออเดอร์ในขณะนี้</b>
+          <small>ระบบจะส่งเสียงกระดิ่งเตือนและอัปเดตอัตโนมัติทันทีเมื่อมีลูกค้าสั่งอาหาร</small>
+        </div>
+      ) : (
+        orders.slice(0, 5).map((o) => (
+          <button className="merchant-recent" key={o.id} onClick={() => go("orders")}>
+            <div className="food-thumb">🍛</div>
+            <div>
+              <b>{o.customer}</b>
+              <small>{o.id} · {statusLabel[o.status] || o.status} {o.roomNumber ? `· ${o.roomNumber}` : ""}</small>
+            </div>
+            <strong>฿{o.total}</strong>
+          </button>
+        ))
+      )}
     </>
   );
 }
@@ -450,10 +484,21 @@ function MerchantOrders({ orders, filter, setFilter, query, setQuery, onBack, up
           <div className="merchant-order-card" key={o.id}>
             <div className="order-head">
               <div>
-                <b>{o.customer}</b>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <b>{o.customer}</b>
+                  {o.customerPhone && <span style={{ fontSize: "11px", color: "#64748b" }}>📞 {o.customerPhone}</span>}
+                </div>
                 <small>Order ID: {o.id} · {o.time}</small>
+                {o.roomNumber && (
+                  <div style={{ fontSize: "12px", color: "#0284c7", marginTop: "2px", fontWeight: 500 }}>
+                    📍 {o.roomNumber}
+                  </div>
+                )}
               </div>
-              <strong>฿{o.total}</strong>
+              <div style={{ textAlign: "right" }}>
+                <strong>฿{o.total}</strong>
+                {o.deliveryFee > 0 && <small style={{ fontSize: "10.5px", color: "#64748b", display: "block" }}>(ค่าส่ง ฿{o.deliveryFee})</small>}
+              </div>
             </div>
             <div className="order-items">
               {o.items?.map((x, i) => (
@@ -461,19 +506,53 @@ function MerchantOrders({ orders, filter, setFilter, query, setQuery, onBack, up
               ))}
             </div>
             <div className="order-footer">
-              <StatusPill tone={["PENDING_ACCEPT", "PENDING_PAYMENT", "PAID"].includes(o.status) ? "orange" : o.status === "PREPARING" ? "yellow" : "green"}>
+              <StatusPill tone={["PENDING_ACCEPT", "PENDING_PAYMENT", "PAID"].includes(o.status) ? "orange" : o.status === "PREPARING" ? "yellow" : ["READY_FOR_DELIVERY", "IN_DELIVERY", "COMPLETED"].includes(o.status) ? "green" : "red"}>
                 {statusLabel[o.status] || o.status}
               </StatusPill>
-              <div>
-                {["PENDING_ACCEPT", "PAID"].includes(o.status) && (
+              <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                {o.status === "PENDING_ACCEPT" && (
+                  <>
+                    <button className="accept-button" onClick={() => updateOrder(o.id, "PREPARING")}>
+                      ✓ รับ & เริ่มทำ
+                    </button>
+                    <button 
+                      onClick={() => updateOrder(o.id, "REJECTED_BY_MERCHANT")}
+                      style={{
+                        background: "#fee2e2",
+                        color: "#b91c1c",
+                        border: "1px solid #fca5a5",
+                        borderRadius: "8px",
+                        padding: "6px 10px",
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        cursor: "pointer"
+                      }}
+                    >
+                      ✕ ปฏิเสธ
+                    </button>
+                  </>
+                )}
+                {["PAID", "PENDING_PAYMENT"].includes(o.status) && (
                   <button className="accept-button" onClick={() => updateOrder(o.id, "PREPARING")}>
-                    รับออเดอร์ & เริ่มทำ
+                    🍳 เริ่มทำอาหาร
                   </button>
                 )}
                 {o.status === "PREPARING" && (
                   <button className="accept-button" onClick={() => updateOrder(o.id, "READY_FOR_DELIVERY")}>
-                    พร้อมจัดส่ง 🛵
+                    🛵 พร้อมจัดส่ง
                   </button>
+                )}
+                {o.status === "READY_FOR_DELIVERY" && (
+                  <span style={{ fontSize: "12px", color: "#059669", fontWeight: 600 }}>🛵 รอไรเดอร์มารับ</span>
+                )}
+                {o.status === "IN_DELIVERY" && (
+                  <span style={{ fontSize: "12px", color: "#2563eb", fontWeight: 600 }}>🚴‍♂️ กำลังนำส่ง</span>
+                )}
+                {o.status === "COMPLETED" && (
+                  <span style={{ fontSize: "12px", color: "#16a34a", fontWeight: 600 }}>✅ ส่งสำเร็จแล้ว</span>
+                )}
+                {["REJECTED_BY_MERCHANT", "CANCELLED_BY_CUSTOMER", "CANCELLED_BY_TIMEOUT"].includes(o.status) && (
+                  <span style={{ fontSize: "12px", color: "#dc2626", fontWeight: 600 }}>✕ ยกเลิกแล้ว</span>
                 )}
               </div>
             </div>

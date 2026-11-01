@@ -36,9 +36,9 @@ exports.cancelOrder = async (req, res) => {
     if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
     if (order.customer_id !== req.user.id) return res.status(403).json({ success: false, message: 'Unauthorized' });
     
-    // ลูกค้ายกเลิกได้เฉพาะตอนรอชำระเงิน (PENDING_PAYMENT) เท่านั้น
-    if (order.status !== 'PENDING_PAYMENT') {
-      return res.status(400).json({ success: false, message: 'Can only cancel order in PENDING_PAYMENT state' });
+    // ลูกค้ายกเลิกได้เฉพาะตอนรอชำระเงิน (PENDING_PAYMENT หรือ PENDING_ACCEPT) เท่านั้น
+    if (!['PENDING_PAYMENT', 'PENDING_ACCEPT'].includes(order.status)) {
+      return res.status(400).json({ success: false, message: 'Can only cancel order before payment/preparation' });
     }
 
     const updated = await repo.updateOrderStatus(order_id, 'CANCELLED_BY_CUSTOMER');
@@ -69,13 +69,10 @@ exports.acceptOrder = async (req, res) => {
     if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
     if (order.merchant_id !== req.user.id) return res.status(403).json({ success: false, message: 'Unauthorized' });
 
-    // ร้านค้ารับออเดอร์ได้เฉพาะตอน PENDING_ACCEPT เท่านั้น
-    if (order.status !== 'PENDING_ACCEPT') {
-      return res.status(400).json({ success: false, message: 'Order is not in PENDING_ACCEPT state' });
-    }
-
-    const updated = await repo.updateOrderStatus(order_id, 'PENDING_PAYMENT');
-    emitOrderStatus(req, order_id, 'PENDING_PAYMENT', {}, order.merchant_id, order.customer_id);
+    // หากอยู่ใน PENDING_ACCEPT ปรับเป็น PENDING_PAYMENT (หรือถ้าลูกค้าจ่ายแล้วก็ไปต่อได้)
+    const nextStatus = order.status === 'PENDING_ACCEPT' ? 'PENDING_PAYMENT' : order.status;
+    const updated = await repo.updateOrderStatus(order_id, nextStatus);
+    emitOrderStatus(req, order_id, nextStatus, {}, order.merchant_id, order.customer_id);
 
     res.status(200).json({ success: true, data: updated[0] });
   } catch (error) {
@@ -91,10 +88,6 @@ exports.rejectOrder = async (req, res) => {
     if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
     if (order.merchant_id !== req.user.id) return res.status(403).json({ success: false, message: 'Unauthorized' });
 
-    if (order.status !== 'PENDING_ACCEPT') {
-      return res.status(400).json({ success: false, message: 'Order is not in PENDING_ACCEPT state' });
-    }
-
     const updated = await repo.updateOrderStatus(order_id, 'REJECTED_BY_MERCHANT');
     emitOrderStatus(req, order_id, 'REJECTED_BY_MERCHANT', {}, order.merchant_id, order.customer_id);
 
@@ -104,7 +97,7 @@ exports.rejectOrder = async (req, res) => {
   }
 };
 
-// ร้านค้าเริ่มปรุงอาหาร (PAID -> PREPARING)
+// ร้านค้าเริ่มปรุงอาหาร (PAID, PENDING_PAYMENT, PENDING_ACCEPT -> PREPARING)
 exports.startPreparing = async (req, res) => {
   try {
     const { order_id } = req.params;
@@ -113,8 +106,9 @@ exports.startPreparing = async (req, res) => {
     if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
     if (order.merchant_id !== req.user.id) return res.status(403).json({ success: false, message: 'Unauthorized' });
 
-    if (order.status !== 'PAID') {
-      return res.status(400).json({ success: false, message: 'Order must be in PAID state to start preparing' });
+    const allowed = ['PAID', 'PENDING_PAYMENT', 'PENDING_ACCEPT'];
+    if (!allowed.includes(order.status)) {
+      return res.status(400).json({ success: false, message: `Cannot start preparing from status: ${order.status}` });
     }
 
     const updated = await repo.updateOrderStatus(order_id, 'PREPARING');
@@ -125,6 +119,33 @@ exports.startPreparing = async (req, res) => {
     if (io) {
       io.to(`merchant_${req.user.id}_kds`).emit('NEW_KITCHEN_ORDER', {
         order_id: Number(order_id)
+      });
+    }
+
+    res.status(200).json({ success: true, data: updated[0] });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// ร้านค้าทำอาหารเสร็จ พร้อมส่ง (PREPARING -> READY_FOR_DELIVERY)
+exports.markReadyForDelivery = async (req, res) => {
+  try {
+    const { order_id } = req.params;
+    const order = await repo.getOrderById(order_id);
+
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+    if (order.merchant_id !== req.user.id) return res.status(403).json({ success: false, message: 'Unauthorized' });
+
+    const updated = await repo.updateOrderStatus(order_id, 'READY_FOR_DELIVERY');
+    emitOrderStatus(req, order_id, 'READY_FOR_DELIVERY', {}, order.merchant_id, order.customer_id);
+
+    // แจ้งเตือนไปยังหน้าจอครัว KDS
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`merchant_${req.user.id}_kds`).emit('KDS_ORDER_COMPLETED', {
+        order_id: Number(order_id),
+        status: 'READY_FOR_DELIVERY'
       });
     }
 

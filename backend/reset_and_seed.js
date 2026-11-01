@@ -421,11 +421,61 @@ async function run() {
     { id: 4, username: 'rider', password_hash: riderPw, full_name: 'ไรเดอร์หลัง มจพ.', phone: '089-777-8888', is_active: true, merchant_id: 6 }
   ]);
 
+  // 9. คำสั่งซื้อเริ่มต้นในระบบ (Real Orders in DB)
+  console.log('📦 กำลังเพิ่มออเดอร์จริงในฐานข้อมูล...');
+  const seedTemplates = [
+    { status: 'PENDING_ACCEPT', room: '302', dormId: 1, note: 'ไม่ใส่ผักชี ไม่หวาน', minsAgo: 2 },
+    { status: 'PAID', room: '415', dormId: 2, note: 'ขอช้อนส้อมด้วยครับ', minsAgo: 5 },
+    { status: 'PREPARING', room: '208', dormId: 3, note: 'เผ็ดน้อย แยกน้ำ', minsAgo: 8 },
+    { status: 'READY_FOR_DELIVERY', room: '512', dormId: 4, note: 'วางไว้โต๊ะหน้าหอ', minsAgo: 12 }
+  ];
+
+  for (const m of merchantsData) {
+    const storeMenus = menuItems.filter(mi => mi.merchant_id === m.id);
+    if (!storeMenus || storeMenus.length === 0) continue;
+
+    let orderNum = 0;
+    for (const tpl of seedTemplates) {
+      orderNum++;
+      const customCode = `${m.prefix}-${String(orderNum).padStart(4, '0')}`;
+      const selectedItem = storeMenus[(orderNum - 1) % storeMenus.length];
+      const deliveryFee = 10.00;
+      const totalAmount = parseFloat(selectedItem.price) + deliveryFee;
+
+      const [order] = await db('ORDERS').insert({
+        order_code: customCode,
+        merchant_order_number: orderNum,
+        customer_id: 1,
+        merchant_id: m.id,
+        delivery_dormitory_id: tpl.dormId,
+        delivery_room_number: `ห้อง ${tpl.room} (หอพัก #${tpl.dormId})`,
+        delivery_fee: deliveryFee,
+        total_amount: totalAmount,
+        status: tpl.status,
+        customer_last_read_message_id: 0,
+        merchant_last_read_message_id: 0,
+        created_at: new Date(Date.now() - (tpl.minsAgo * 60 * 1000))
+      }).returning('*');
+
+      await db('ORDER_ITEMS').insert({
+        order_id: order.id,
+        menu_item_id: selectedItem.id,
+        quantity: 1,
+        unit_price: selectedItem.price,
+        note: tpl.note,
+        is_completed: ['READY_FOR_DELIVERY', 'IN_DELIVERY', 'COMPLETED'].includes(tpl.status)
+      });
+    }
+
+    await db('MERCHANTS').where('id', m.id).update({ last_order_number: orderNum });
+  }
+
   console.log('🎉 Reset and Seed เสร็จสมบูรณ์!');
   console.log(`- ซอย: ${sois.length}`);
   console.log(`- หอพัก: ${dorms.length}`);
   console.log(`- ร้านค้า: ${merchantsData.length}`);
   console.log(`- เมนูอาหาร: ${menuItems.length}`);
+  console.log(`- ออเดอร์จริงในระบบ: ${merchantsData.length * 4}`);
   process.exit(0);
 }
 
