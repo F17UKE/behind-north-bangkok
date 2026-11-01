@@ -1,30 +1,30 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 
-import RoleSelect from "./pages/RoleSelect";
+import RoleSelect from "./views/RoleSelect";
 
 import CustomerLayout from "./layouts/CustomerLayout";
-import CustomerHome from "./pages/customer/Home";
-import StorePage from "./pages/customer/StorePage";
-import CartPage from "./pages/customer/CartPage";
-import OrdersPage from "./pages/customer/Orders";
-import ChatPage from "./pages/customer/Chat";
-import ProfilePage from "./pages/customer/Profile";
+import CustomerHome from "./views/customer/Home";
+import StorePage from "./views/customer/StorePage";
+import CartPage from "./views/customer/CartPage";
+import OrdersPage from "./views/customer/Orders";
+import ChatPage from "./views/customer/Chat";
+import ProfilePage from "./views/customer/Profile";
 
 import MerchantLayout from "./layouts/MerchantLayout";
-import MerchantDashboard from "./pages/merchant/Dashboard";
-import MerchantOrders from "./pages/merchant/Orders";
-import MerchantMenu from "./pages/merchant/Menu";
-import MerchantReports from "./pages/merchant/Reports";
-import MerchantChat from "./pages/merchant/Chat";
-import MerchantSettings from "./pages/merchant/Settings";
+import MerchantDashboard from "./views/merchant/Dashboard";
+import MerchantOrders from "./views/merchant/Orders";
+import MerchantMenu from "./views/merchant/Menu";
+import MerchantReports from "./views/merchant/Reports";
+import MerchantChat from "./views/merchant/Chat";
+import MerchantSettings from "./views/merchant/Settings";
 
 import AdminLayout from "./layouts/AdminLayout";
-import AdminDashboard from "./pages/admin/Dashboard";
-import AdminUsers from "./pages/admin/Users";
-import AdminStores from "./pages/admin/Stores";
-import AdminOrders from "./pages/admin/Orders";
-import AdminReports from "./pages/admin/Reports";
-import AdminPromotions from "./pages/admin/Promotions";
+import AdminDashboard from "./views/admin/Dashboard";
+import AdminUsers from "./views/admin/Users";
+import AdminStores from "./views/admin/Stores";
+import AdminOrders from "./views/admin/Orders";
+import AdminReports from "./views/admin/Reports";
+import AdminPromotions from "./views/admin/Promotions";
 
 export default function App() {
   return (

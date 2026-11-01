@@ -1,4 +1,4 @@
-import AdminPage from "../../pages/admin/AdminPage";
+import AdminPage from "../../views/admin/AdminPage";
 
 export default function Page() {
   return <AdminPage />;

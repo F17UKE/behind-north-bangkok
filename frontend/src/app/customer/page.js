@@ -1,4 +1,4 @@
-import CustomerPage from "../../pages/customer/CustomerPage";
+import CustomerPage from "../../views/customer/CustomerPage";
 
 export default function Page() {
   return <CustomerPage />;
