@@ -46,32 +46,59 @@ export const merchantApi = {
 
   // --- Merchant Management (สำหรับร้านค้าจัดการเมนูและโปรไฟล์) ---
   async getStoreProfile() {
-    const res = await api.get("/merchant-management/profile");
+    const res = await api.get("/merchant-management/profile", {}, "MERCHANT");
     return res?.data || null;
   },
 
   async updateStoreStatus(is_open) {
-    const res = await api.patch("/merchant-management/status", { is_open });
+    const res = await api.patch("/merchant-management/status", { is_open }, {}, "MERCHANT");
     return res?.data || res;
   },
 
   async createMenu(menuData) {
-    const res = await api.post("/merchant-management/menus", menuData);
+    const res = await api.post("/merchant-management/menus", menuData, {}, "MERCHANT");
     return res?.data || res;
   },
 
   async updateMenu(menuId, menuData) {
-    const res = await api.put(`/merchant-management/menus/${menuId}`, menuData);
+    const res = await api.put(`/merchant-management/menus/${menuId}`, menuData, {}, "MERCHANT");
     return res?.data || res;
   },
 
   async deleteMenu(menuId) {
-    const res = await api.delete(`/merchant-management/menus/${menuId}`);
+    const res = await api.delete(`/merchant-management/menus/${menuId}`, {}, "MERCHANT");
     return res?.data || res;
   },
 
   async toggleMenuAvailability(menuId, is_available) {
-    const res = await api.patch(`/merchant-management/menus/${menuId}/availability`, { is_available });
+    const res = await api.patch(`/merchant-management/menus/${menuId}/availability`, { is_available }, {}, "MERCHANT");
+    return res?.data || res;
+  },
+
+  // --- จัดการค่าจัดส่งตามซอย (Delivery Fee by Soi) ---
+  async getDeliveryFees() {
+    const res = await api.get("/merchant-management/delivery-fees", {}, "MERCHANT");
+    return res?.data || [];
+  },
+
+  async updateDeliveryFee(soi_id, fee) {
+    const res = await api.put("/merchant-management/delivery-fees", { soi_id: Number(soi_id), fee: parseFloat(fee) }, {}, "MERCHANT");
+    return res?.data || res;
+  },
+
+  // --- จัดการไรเดอร์ของร้านค้า (My Riders) ---
+  async getMyRiders() {
+    const res = await api.get("/merchant-management/riders", {}, "MERCHANT");
+    return res?.data || [];
+  },
+
+  async createRider(riderData) {
+    const res = await api.post("/merchant-management/riders", riderData, {}, "MERCHANT");
+    return res?.data || res;
+  },
+
+  async toggleRiderStatus(riderId, is_active) {
+    const res = await api.patch(`/merchant-management/riders/${riderId}/status`, { is_active }, {}, "MERCHANT");
     return res?.data || res;
   }
 };

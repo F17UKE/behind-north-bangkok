@@ -565,37 +565,745 @@ function MerchantOrders({ orders, filter, setFilter, query, setQuery, onBack, up
   );
 }
 
-function MerchantDelivery({ orders, deliveryFee, setDeliveryFee, onBack }) {
-  const ready = orders.filter((o) => ["READY_FOR_DELIVERY", "IN_DELIVERY", "COMPLETED"].includes(o.status));
+function MerchantDelivery({ orders, deliveryFee, setDeliveryFee, onBack, loadMerchantOrders }) {
+  const [tab, setTab] = useState("dispatch"); // "dispatch" | "soi_fees" | "riders"
+  const [riders, setRiders] = useState([]);
+  const [sois, setSois] = useState([]);
+  const [soiFees, setSoiFees] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [assigningOrderId, setAssigningOrderId] = useState(null);
+
+  // Add Rider Modal
+  const [showRiderModal, setShowRiderModal] = useState(false);
+  const [riderName, setRiderName] = useState("");
+  const [riderPhone, setRiderPhone] = useState("");
+  const [riderUser, setRiderUser] = useState("");
+  const [riderPass, setRiderPass] = useState("");
+  const [submittingRider, setSubmittingRider] = useState(false);
+
+  useEffect(() => {
+    loadRidersAndFees();
+  }, []);
+
+  async function loadRidersAndFees() {
+    setLoading(true);
+    try {
+      const [ridersData, soisData, feesData] = await Promise.all([
+        merchantApi.getMyRiders().catch(() => []),
+        merchantApi.getSois().catch(() => []),
+        merchantApi.getDeliveryFees().catch(() => [])
+      ]);
+
+      if (Array.isArray(ridersData)) setRiders(ridersData);
+      if (Array.isArray(soisData)) setSois(soisData);
+
+      const feeMap = {};
+      (soisData || []).forEach(s => { feeMap[s.id] = 10; });
+      (feesData || []).forEach(f => { feeMap[f.soi_id] = parseFloat(f.fee); });
+      setSoiFees(feeMap);
+    } catch (err) {
+      console.warn("Delivery load error:", err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // มอบหมาย Rider
+  async function handleAssignRider(orderRawId, riderId) {
+    try {
+      await orderApi.assignRider(orderRawId, riderId);
+      setNotice("✅ มอบหมายออเดอร์ให้ไรเดอร์เรียบร้อยแล้ว!");
+      setAssigningOrderId(null);
+      if (loadMerchantOrders) loadMerchantOrders();
+      setTimeout(() => setNotice(""), 3500);
+    } catch (err) {
+      alert("ไม่สามารถมอบหมายงานได้: " + (err?.response?.data?.message || err.message));
+    }
+  }
+
+  // ร้านค้าเลือกไปส่งเอง
+  async function handleSelfDeliver(orderRawId) {
+    try {
+      await orderApi.selfDeliver(orderRawId);
+      setNotice("🛵 ร้านค้าเลือกจัดส่งออเดอร์นี้ด้วยตนเอง (สถานะ: กำลังนำส่ง)");
+      setAssigningOrderId(null);
+      if (loadMerchantOrders) loadMerchantOrders();
+      setTimeout(() => setNotice(""), 3500);
+    } catch (err) {
+      alert("ไม่สามารถเปลี่ยนสถานะได้: " + (err?.response?.data?.message || err.message));
+    }
+  }
+
+  // ส่งสำเร็จ
+  async function handleCompleteOrder(orderRawId) {
+    try {
+      await orderApi.completeOrder(orderRawId);
+      setNotice("🎉 บันทึกจัดส่งออเดอร์สำเร็จเรียบร้อย!");
+      if (loadMerchantOrders) loadMerchantOrders();
+      setTimeout(() => setNotice(""), 3500);
+    } catch (err) {
+      alert("เกิดข้อผิดพลาด: " + (err?.response?.data?.message || err.message));
+    }
+  }
+
+  // บันทึกค่าส่งต่อซอย
+  async function handleSaveSoiFee(soiId) {
+    const fee = soiFees[soiId] ?? 10;
+    try {
+      await merchantApi.updateDeliveryFee(soiId, fee);
+      setNotice(`📍 บันทึกค่าจัดส่งสำเร็จ (฿${fee})`);
+      setTimeout(() => setNotice(""), 3000);
+    } catch (err) {
+      alert("บันทึกค่าส่งไม่สำเร็จ: " + (err?.response?.data?.error || err.message));
+    }
+  }
+
+  // ตั้งค่าเท่ากันทุกซอย
+  async function handleSetAllFees(fixedFee) {
+    const newFees = { ...soiFees };
+    for (const s of sois) {
+      newFees[s.id] = fixedFee;
+    }
+    setSoiFees(newFees);
+    try {
+      for (const s of sois) {
+        await merchantApi.updateDeliveryFee(s.id, fixedFee);
+      }
+      setNotice(`✅ ตั้งค่าจัดส่งทุกซอยเป็น ฿${fixedFee} เรียบร้อยแล้ว`);
+      setTimeout(() => setNotice(""), 3000);
+    } catch (err) {
+      alert("บันทึกไม่สำเร็จ: " + err.message);
+    }
+  }
+
+  // สลับสถานะไรเดอร์
+  async function handleToggleRider(riderId, currentActive) {
+    try {
+      await merchantApi.toggleRiderStatus(riderId, !currentActive);
+      setRiders(cur => cur.map(r => r.id === riderId ? { ...r, is_active: !currentActive } : r));
+    } catch (err) {
+      console.warn("Toggle rider error:", err);
+    }
+  }
+
+  // สร้างไรเดอร์ใหม่
+  async function handleCreateRider(e) {
+    e.preventDefault();
+    if (!riderName || !riderUser || !riderPass) return;
+    setSubmittingRider(true);
+    try {
+      await merchantApi.createRider({
+        username: riderUser.trim(),
+        password: riderPass,
+        full_name: riderName.trim(),
+        phone: riderPhone.trim() || undefined
+      });
+      setNotice("🎉 เพิ่มไรเดอร์ใหม่สำเร็จ! ไรเดอร์สามารถใช้ Username นี้เข้าสู่ระบบได้ทันที");
+      setShowRiderModal(false);
+      setRiderName("");
+      setRiderPhone("");
+      setRiderUser("");
+      setRiderPass("");
+      loadRidersAndFees();
+      setTimeout(() => setNotice(""), 4000);
+    } catch (err) {
+      alert("ไม่สามารถเพิ่มไรเดอร์ได้: " + (err?.response?.data?.message || err.message));
+    } finally {
+      setSubmittingRider(false);
+    }
+  }
+
+  const deliveryOrders = orders.filter((o) =>
+    ["READY_FOR_DELIVERY", "IN_DELIVERY", "COMPLETED"].includes(o.status)
+  );
+
   return (
-    <>
-      <TopBar title="การจัดส่ง" subtitle="Delivery Management" onBack={onBack} />
-      <div className="delivery-fee-box">
-        <h3>กำหนดค่าจัดส่งเริ่มต้น (บาท)</h3>
-        <input 
-          value={deliveryFee} 
-          onChange={(e) => setDeliveryFee(e.target.value.replace(/\D/g, ""))} 
-        />
-        <div className="range-track"><i /></div>
-        <button className="primary-btn">บันทึกค่าจัดส่ง</button>
-      </div>
-      <div className="section-header">
-        <b>ออเดอร์ที่พร้อมจัดส่ง/กำลังส่ง</b>
-        <span>{ready.length} รายการ</span>
-      </div>
-      {ready.map((o) => (
-        <div className="merchant-order-card compact" key={o.id}>
-          <div className="order-head">
-            <div>
-              <b>{o.id}</b>
-              <small>{o.customer}</small>
-            </div>
-            <StatusPill tone="green">{statusLabel[o.status] || o.status}</StatusPill>
-          </div>
-          <strong>฿{o.total}</strong>
+    <div style={{ paddingBottom: "30px" }}>
+      <TopBar title="ศูนย์จัดการการจัดส่ง" subtitle="Delivery & Rider Management" onBack={onBack} />
+
+      {notice && (
+        <div style={{
+          background: "#059669",
+          color: "white",
+          padding: "10px 14px",
+          borderRadius: "12px",
+          margin: "10px 12px",
+          fontSize: "13px",
+          textAlign: "center",
+          fontWeight: 600,
+          boxShadow: "0 4px 14px rgba(5, 150, 105, 0.25)"
+        }}>
+          {notice}
         </div>
-      ))}
-    </>
+      )}
+
+      {/* Sub Tabs */}
+      <div style={{
+        display: "flex",
+        gap: "6px",
+        padding: "8px 12px 14px",
+        overflowX: "auto"
+      }}>
+        <button
+          onClick={() => setTab("dispatch")}
+          style={{
+            flex: 1,
+            padding: "9px 12px",
+            borderRadius: "10px",
+            border: tab === "dispatch" ? "none" : "1px solid #e2e8f0",
+            background: tab === "dispatch" ? "linear-gradient(135deg, #10b981 0%, #059669 100%)" : "white",
+            color: tab === "dispatch" ? "white" : "#475569",
+            fontWeight: 700,
+            fontSize: "12px",
+            whiteSpace: "nowrap",
+            boxShadow: tab === "dispatch" ? "0 4px 10px rgba(5, 150, 105, 0.2)" : "none",
+            cursor: "pointer"
+          }}
+        >
+          🛵 มอบหมายจัดส่ง ({deliveryOrders.filter(o => o.status === "READY_FOR_DELIVERY").length})
+        </button>
+
+        <button
+          onClick={() => setTab("soi_fees")}
+          style={{
+            flex: 1,
+            padding: "9px 12px",
+            borderRadius: "10px",
+            border: tab === "soi_fees" ? "none" : "1px solid #e2e8f0",
+            background: tab === "soi_fees" ? "linear-gradient(135deg, #10b981 0%, #059669 100%)" : "white",
+            color: tab === "soi_fees" ? "white" : "#475569",
+            fontWeight: 700,
+            fontSize: "12px",
+            whiteSpace: "nowrap",
+            boxShadow: tab === "soi_fees" ? "0 4px 10px rgba(5, 150, 105, 0.2)" : "none",
+            cursor: "pointer"
+          }}
+        >
+          📍 ค่าส่งตามซอย ({sois.length})
+        </button>
+
+        <button
+          onClick={() => setTab("riders")}
+          style={{
+            flex: 1,
+            padding: "9px 12px",
+            borderRadius: "10px",
+            border: tab === "riders" ? "none" : "1px solid #e2e8f0",
+            background: tab === "riders" ? "linear-gradient(135deg, #10b981 0%, #059669 100%)" : "white",
+            color: tab === "riders" ? "white" : "#475569",
+            fontWeight: 700,
+            fontSize: "12px",
+            whiteSpace: "nowrap",
+            boxShadow: tab === "riders" ? "0 4px 10px rgba(5, 150, 105, 0.2)" : "none",
+            cursor: "pointer"
+          }}
+        >
+          👥 ไรเดอร์ ({riders.length})
+        </button>
+      </div>
+
+      {/* --- TAB 1: งานจัดส่ง & มอบหมายไรเดอร์ --- */}
+      {tab === "dispatch" && (
+        <div style={{ padding: "0 12px" }}>
+          <div style={{ marginBottom: "12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <b style={{ fontSize: "14px", color: "#334155" }}>รายการออเดอร์ที่พร้อมจัดส่ง / กำลังส่ง</b>
+            <span style={{ fontSize: "12px", color: "#64748b" }}>{deliveryOrders.length} รายการ</span>
+          </div>
+
+          {deliveryOrders.length > 0 ? (
+            deliveryOrders.map((o) => (
+              <div
+                key={o.id}
+                style={{
+                  background: "white",
+                  borderRadius: "14px",
+                  padding: "14px 16px",
+                  marginBottom: "12px",
+                  border: "1px solid #e2e8f0",
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.04)"
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", marginBottom: "8px" }}>
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <b style={{ fontSize: "15px", color: "#1e293b" }}>{o.customer}</b>
+                      {o.customerPhone && <span style={{ fontSize: "12px", color: "#64748b" }}>📞 {o.customerPhone}</span>}
+                    </div>
+                    <small style={{ color: "#64748b", display: "block" }}>Order ID: {o.id} · {o.time}</small>
+                    {o.roomNumber && (
+                      <div style={{ fontSize: "13px", color: "#0284c7", fontWeight: 600, marginTop: "3px" }}>
+                        📍 {o.roomNumber}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <strong style={{ fontSize: "16px", color: "#0f172a" }}>฿{o.total}</strong>
+                    {o.deliveryFee > 0 && <small style={{ display: "block", color: "#64748b", fontSize: "11px" }}>ค่าส่ง ฿{o.deliveryFee}</small>}
+                  </div>
+                </div>
+
+                <div style={{ background: "#f8fafc", padding: "8px 10px", borderRadius: "8px", margin: "8px 0", fontSize: "12px", color: "#475569" }}>
+                  {o.items?.map((it, i) => (
+                    <div key={i} style={{ padding: "2px 0" }}>• {it}</div>
+                  ))}
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "10px" }}>
+                  <StatusPill tone={o.status === "READY_FOR_DELIVERY" ? "yellow" : o.status === "IN_DELIVERY" ? "orange" : "green"}>
+                    {statusLabel[o.status] || o.status}
+                  </StatusPill>
+
+                  {/* Actions for READY_FOR_DELIVERY */}
+                  {o.status === "READY_FOR_DELIVERY" && (
+                    <button
+                      onClick={() => setAssigningOrderId(assigningOrderId === o.id ? null : o.id)}
+                      style={{
+                        background: "#059669",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "8px",
+                        padding: "7px 14px",
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        boxShadow: "0 2px 6px rgba(5,150,105,0.3)"
+                      }}
+                    >
+                      {assigningOrderId === o.id ? "✕ ปิดตัวเลือก" : "🛵 มอบหมายผู้จัดส่ง"}
+                    </button>
+                  )}
+
+                  {/* Actions for IN_DELIVERY */}
+                  {o.status === "IN_DELIVERY" && (
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <span style={{ fontSize: "12px", color: "#2563eb", fontWeight: 600 }}>🚴‍♂️ กำลังนำส่ง</span>
+                      <button
+                        onClick={() => handleCompleteOrder(o.rawId)}
+                        style={{
+                          background: "#16a34a",
+                          color: "white",
+                          border: "none",
+                          borderRadius: "8px",
+                          padding: "6px 12px",
+                          fontSize: "12px",
+                          fontWeight: 700,
+                          cursor: "pointer"
+                        }}
+                      >
+                        ✅ จัดส่งถึงแล้ว
+                      </button>
+                    </div>
+                  )}
+
+                  {o.status === "COMPLETED" && (
+                    <span style={{ fontSize: "12px", color: "#16a34a", fontWeight: 600 }}>✅ ส่งมอบอาหารสำเร็จแล้ว</span>
+                  )}
+                </div>
+
+                {/* Assignment Dropdown Panel */}
+                {assigningOrderId === o.id && (
+                  <div style={{
+                    marginTop: "12px",
+                    padding: "12px",
+                    background: "#ecfdf5",
+                    border: "1.5px solid #a7f3d0",
+                    borderRadius: "10px"
+                  }}>
+                    <b style={{ fontSize: "13px", color: "#065f46", display: "block", marginBottom: "8px" }}>
+                      🛵 เลือกผู้ที่จะไปจัดส่งออเดอร์นี้:
+                    </b>
+
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                      {/* รายชื่อ Riders */}
+                      {riders.filter(r => r.is_active).length > 0 ? (
+                        riders.filter(r => r.is_active).map(r => (
+                          <button
+                            key={r.id}
+                            onClick={() => handleAssignRider(o.rawId, r.id)}
+                            style={{
+                              background: "white",
+                              border: "1px solid #10b981",
+                              color: "#065f46",
+                              padding: "8px 12px",
+                              borderRadius: "8px",
+                              textAlign: "left",
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              fontSize: "13px",
+                              fontWeight: 600,
+                              cursor: "pointer"
+                            }}
+                          >
+                            <span>🛵 ส่งให้: <b>{r.full_name}</b> {r.phone && <small>({r.phone})</small>}</span>
+                            <span style={{ color: "#059669", fontSize: "11px" }}>มอบหมาย ›</span>
+                          </button>
+                        ))
+                      ) : (
+                        <div style={{ fontSize: "12px", color: "#94a3b8", padding: "4px 0" }}>
+                          (ไม่มีไรเดอร์ว่างในขณะนี้ สามารถเพิ่มไรเดอร์ที่แท็บ 'ไรเดอร์' หรือเลือกส่งเองด้านล่าง)
+                        </div>
+                      )}
+
+                      {/* ตัวเลือกร้านส่งเอง */}
+                      <button
+                        onClick={() => handleSelfDeliver(o.rawId)}
+                        style={{
+                          background: "linear-gradient(135deg, #ff7a18 0%, #ff5200 100%)",
+                          color: "white",
+                          border: "none",
+                          padding: "10px 14px",
+                          borderRadius: "8px",
+                          textAlign: "center",
+                          fontSize: "13px",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          boxShadow: "0 3px 8px rgba(255,82,0,0.25)"
+                        }}
+                      >
+                        🏪 ร้านค้าเลือกไปส่งเอง (Self Delivery)
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))
+          ) : (
+            <EmptyState
+              title="ไม่มีออเดอร์ในขั้นตอนจัดส่ง"
+              text="เมื่ออาหารปรุงเสร็จแล้วและกด 'พร้อมจัดส่ง' ออเดอร์จะมาปรากฏที่นี่เพื่อให้มอบหมายไรเดอร์หรือเลือกส่งเอง"
+            />
+          )}
+        </div>
+      )}
+
+      {/* --- TAB 2: จัดการค่าจัดส่งตามซอย --- */}
+      {tab === "soi_fees" && (
+        <div style={{ padding: "0 12px" }}>
+          {/* Quick batch set */}
+          <div style={{
+            background: "white",
+            border: "1px solid #e2e8f0",
+            borderRadius: "14px",
+            padding: "14px 16px",
+            marginBottom: "14px",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.03)"
+          }}>
+            <b style={{ fontSize: "14px", color: "#1e293b", display: "block", marginBottom: "4px" }}>
+              ⚡ ตั้งค่าส่งเท่ากันทุกซอยอย่างรวดเร็ว
+            </b>
+            <small style={{ color: "#64748b", display: "block", marginBottom: "10px" }}>
+              กดเลือกราคาเพื่อนำไปใช้กับทุกซอยโดยอัตโนมัติ
+            </small>
+            <div style={{ display: "flex", gap: "8px" }}>
+              {[10, 15, 20, 25].map(amt => (
+                <button
+                  key={amt}
+                  onClick={() => handleSetAllFees(amt)}
+                  style={{
+                    flex: 1,
+                    background: "#f1f5f9",
+                    color: "#334155",
+                    border: "1px solid #cbd5e1",
+                    borderRadius: "8px",
+                    padding: "8px",
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    cursor: "pointer"
+                  }}
+                >
+                  ฿{amt}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ marginBottom: "10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <b style={{ fontSize: "14px", color: "#334155" }}>กำหนดค่าส่งแยกตามซอย</b>
+            <small style={{ color: "#64748b" }}>รอบมหาวิทยาลัย มจพ.</small>
+          </div>
+
+          {/* List of Sois */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            {sois.map(soi => {
+              const currentFee = soiFees[soi.id] ?? 10;
+              return (
+                <div
+                  key={soi.id}
+                  style={{
+                    background: "white",
+                    borderRadius: "12px",
+                    padding: "12px 14px",
+                    border: "1px solid #e2e8f0",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    boxShadow: "0 2px 6px rgba(0,0,0,0.02)"
+                  }}
+                >
+                  <div>
+                    <b style={{ fontSize: "15px", color: "#1e293b", display: "block" }}>📍 {soi.name}</b>
+                    <small style={{ color: "#64748b" }}>หอพักในพื้นที่ {soi.name}</small>
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <div style={{ display: "flex", alignItems: "center", border: "1px solid #cbd5e1", borderRadius: "8px", overflow: "hidden" }}>
+                      <button
+                        onClick={() => {
+                          const next = Math.max(0, currentFee - 5);
+                          setSoiFees(prev => ({ ...prev, [soi.id]: next }));
+                        }}
+                        style={{ border: "none", background: "#f8fafc", padding: "6px 10px", fontSize: "14px", fontWeight: 700, cursor: "pointer" }}
+                      >
+                        -
+                      </button>
+                      <input
+                        type="number"
+                        value={currentFee}
+                        onChange={(e) => {
+                          const val = Math.max(0, parseInt(e.target.value) || 0);
+                          setSoiFees(prev => ({ ...prev, [soi.id]: val }));
+                        }}
+                        style={{ width: "45px", border: "none", textAlign: "center", fontSize: "14px", fontWeight: 700, outline: "none" }}
+                      />
+                      <button
+                        onClick={() => {
+                          const next = currentFee + 5;
+                          setSoiFees(prev => ({ ...prev, [soi.id]: next }));
+                        }}
+                        style={{ border: "none", background: "#f8fafc", padding: "6px 10px", fontSize: "14px", fontWeight: 700, cursor: "pointer" }}
+                      >
+                        +
+                      </button>
+                    </div>
+
+                    <button
+                      onClick={() => handleSaveSoiFee(soi.id)}
+                      style={{
+                        background: "#059669",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "8px",
+                        padding: "8px 12px",
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        cursor: "pointer"
+                      }}
+                    >
+                      บันทึก
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* --- TAB 3: ไรเดอร์ของร้านค้า --- */}
+      {tab === "riders" && (
+        <div style={{ padding: "0 12px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
+            <div>
+              <b style={{ fontSize: "15px", color: "#1e293b", display: "block" }}>พนักงานส่งอาหารของร้าน</b>
+              <small style={{ color: "#64748b" }}>จัดการไรเดอร์และบัญชีเข้าสู่ระบบ</small>
+            </div>
+            <button
+              onClick={() => setShowRiderModal(true)}
+              style={{
+                background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                color: "white",
+                border: "none",
+                borderRadius: "10px",
+                padding: "8px 14px",
+                fontSize: "12px",
+                fontWeight: 700,
+                cursor: "pointer",
+                boxShadow: "0 4px 12px rgba(5, 150, 105, 0.25)"
+              }}
+            >
+              ＋ เพิ่มไรเดอร์ใหม่
+            </button>
+          </div>
+
+          {riders.length > 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              {riders.map(r => (
+                <div
+                  key={r.id}
+                  style={{
+                    background: "white",
+                    borderRadius: "14px",
+                    padding: "14px 16px",
+                    border: "1px solid #e2e8f0",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.03)"
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                    <div style={{
+                      width: "40px",
+                      height: "40px",
+                      borderRadius: "50%",
+                      background: "#e0f2fe",
+                      color: "#0369a1",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "20px"
+                    }}>
+                      🛵
+                    </div>
+                    <div>
+                      <b style={{ fontSize: "15px", color: "#1e293b", display: "block" }}>{r.full_name}</b>
+                      <small style={{ color: "#64748b", display: "block" }}>
+                        Username: <b>{r.username}</b> {r.phone ? `· 📞 ${r.phone}` : ""}
+                      </small>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => handleToggleRider(r.id, r.is_active)}
+                    style={{
+                      background: r.is_active ? "#ecfdf5" : "#f1f5f9",
+                      color: r.is_active ? "#059669" : "#64748b",
+                      border: r.is_active ? "1px solid #a7f3d0" : "1px solid #cbd5e1",
+                      borderRadius: "8px",
+                      padding: "6px 12px",
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      cursor: "pointer"
+                    }}
+                  >
+                    {r.is_active ? "● พร้อมรับงาน" : "○ พักงาน"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              title="ยังไม่มีไรเดอร์ในร้านของคุณ"
+              text="กดปุ่ม '＋ เพิ่มไรเดอร์ใหม่' ด้านบน เพื่อสร้างบัญชีให้ไรเดอร์ประจำร้านเข้าสู่ระบบ"
+            />
+          )}
+
+          {/* Modal เพิ่มไรเดอร์ใหม่ */}
+          {showRiderModal && (
+            <div style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: "rgba(0,0,0,0.5)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 999,
+              padding: "16px"
+            }}>
+              <div style={{
+                background: "white",
+                borderRadius: "20px",
+                padding: "24px",
+                width: "100%",
+                maxWidth: "420px",
+                boxShadow: "0 20px 40px rgba(0,0,0,0.2)"
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                  <b style={{ fontSize: "17px", color: "#1e293b" }}>🛵 เพิ่มพนักงานส่งอาหารใหม่</b>
+                  <button onClick={() => setShowRiderModal(false)} style={{ border: "none", background: "none", fontSize: "18px", cursor: "pointer", color: "#64748b" }}>✕</button>
+                </div>
+
+                <form onSubmit={handleCreateRider} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                  <div className="auth-field-group">
+                    <label>ชื่อ-นามสกุลไรเดอร์ *</label>
+                    <input
+                      type="text"
+                      placeholder="เช่น สมชาย วิ่งไว"
+                      value={riderName}
+                      onChange={(e) => setRiderName(e.target.value)}
+                      required
+                    />
+                  </div>
+
+                  <div className="auth-field-group">
+                    <label>เบอร์โทรศัพท์สำหรับติดต่อ</label>
+                    <input
+                      type="tel"
+                      placeholder="เช่น 0891234567"
+                      value={riderPhone}
+                      onChange={(e) => setRiderPhone(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="auth-field-group">
+                    <label>ชื่อผู้ใช้งาน (Username สำหรับล็อกอิน) *</label>
+                    <input
+                      type="text"
+                      placeholder="เช่น rider_somchai"
+                      value={riderUser}
+                      onChange={(e) => setRiderUser(e.target.value)}
+                      required
+                    />
+                  </div>
+
+                  <div className="auth-field-group">
+                    <label>รหัสผ่าน (Password) *</label>
+                    <input
+                      type="password"
+                      placeholder="กำหนดรหัสผ่านอย่างน้อย 6 ตัวอักษร"
+                      value={riderPass}
+                      onChange={(e) => setRiderPass(e.target.value)}
+                      required
+                    />
+                  </div>
+
+                  <div style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowRiderModal(false)}
+                      style={{
+                        flex: 1,
+                        padding: "12px",
+                        borderRadius: "10px",
+                        border: "1px solid #cbd5e1",
+                        background: "#f8fafc",
+                        color: "#475569",
+                        fontWeight: 600,
+                        cursor: "pointer"
+                      }}
+                    >
+                      ยกเลิก
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={submittingRider}
+                      style={{
+                        flex: 2,
+                        padding: "12px",
+                        borderRadius: "10px",
+                        border: "none",
+                        background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                        color: "white",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        boxShadow: "0 4px 12px rgba(5, 150, 105, 0.25)"
+                      }}
+                    >
+                      {submittingRider ? "กำลังบันทึก..." : "บันทึกข้อมูลไรเดอร์"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -651,6 +1359,13 @@ function MerchantMenus({ merchant, onBack }) {
   const [submitting, setSubmitting] = useState(false);
   const [notice, setNotice] = useState("");
 
+  // Edit Menu State
+  const [editingMenu, setEditingMenu] = useState(null);
+  const [editName, setEditName] = useState("");
+  const [editPrice, setEditPrice] = useState("");
+  const [editDesc, setEditDesc] = useState("");
+  const [submittingEdit, setSubmittingEdit] = useState(false);
+
   useEffect(() => {
     loadMenus();
   }, [merchant?.id]);
@@ -694,6 +1409,34 @@ function MerchantMenus({ merchant, onBack }) {
     }
   }
 
+  function openEditModal(item) {
+    setEditingMenu(item);
+    setEditName(item.name || "");
+    setEditPrice(item.price || "");
+    setEditDesc(item.description || "");
+  }
+
+  async function handleUpdateMenu(e) {
+    e.preventDefault();
+    if (!editName.trim() || !editPrice || !editingMenu) return;
+    setSubmittingEdit(true);
+    try {
+      await merchantApi.updateMenu(editingMenu.id, {
+        name: editName.trim(),
+        price: parseFloat(editPrice),
+        description: editDesc.trim() || undefined
+      });
+      setNotice("✅ แก้ไขข้อมูลเมนูอาหารสำเร็จ!");
+      setEditingMenu(null);
+      loadMenus();
+      setTimeout(() => setNotice(""), 3000);
+    } catch (err) {
+      alert("ไม่สามารถแก้ไขเมนูได้: " + (err?.response?.data?.error || err.message));
+    } finally {
+      setSubmittingEdit(false);
+    }
+  }
+
   async function handleToggle(menuId, currentAvail) {
     try {
       await merchantApi.toggleMenuAvailability(menuId, !currentAvail);
@@ -726,7 +1469,7 @@ function MerchantMenus({ merchant, onBack }) {
       <div style={{ padding: "0 12px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
           <b style={{ fontSize: "16px", color: "#1e293b" }}>รายการอาหารของร้าน</b>
-          <small style={{ display: "block", color: "#64748b" }}>จัดการราคาและเปิด-ปิดการขาย</small>
+          <small style={{ display: "block", color: "#64748b" }}>จัดการราคา แก้ไขข้อมูล และเปิด-ปิดการขาย</small>
         </div>
         <button
           onClick={() => setShowAddModal(true)}
@@ -848,6 +1591,106 @@ function MerchantMenus({ merchant, onBack }) {
         </div>
       )}
 
+      {/* Modal แก้ไขเมนูอาหาร (Pop-up การแก้ไขเมนู) */}
+      {editingMenu && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: "rgba(0,0,0,0.5)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 999,
+          padding: "16px"
+        }}>
+          <div style={{
+            background: "white",
+            borderRadius: "20px",
+            padding: "24px",
+            width: "100%",
+            maxWidth: "420px",
+            boxShadow: "0 20px 40px rgba(0,0,0,0.2)"
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+              <b style={{ fontSize: "18px", color: "#1e293b" }}>✏️ แก้ไขเมนูอาหาร</b>
+              <button onClick={() => setEditingMenu(null)} style={{ border: "none", background: "none", fontSize: "18px", cursor: "pointer", color: "#64748b" }}>✕</button>
+            </div>
+
+            <form onSubmit={handleUpdateMenu} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+              <div className="auth-field-group">
+                <label>ชื่อเมนูอาหาร *</label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="auth-field-group">
+                <label>ราคา (บาท) *</label>
+                <input
+                  type="number"
+                  value={editPrice}
+                  onChange={(e) => setEditPrice(e.target.value)}
+                  required
+                  min="0"
+                  step="1"
+                />
+              </div>
+
+              <div className="auth-field-group">
+                <label>รายละเอียด / ส่วนผสม</label>
+                <textarea
+                  value={editDesc}
+                  onChange={(e) => setEditDesc(e.target.value)}
+                  rows={3}
+                />
+              </div>
+
+              <div style={{ display: "flex", gap: "10px", marginTop: "8px" }}>
+                <button
+                  type="button"
+                  onClick={() => setEditingMenu(null)}
+                  style={{
+                    flex: 1,
+                    padding: "12px",
+                    borderRadius: "10px",
+                    border: "1px solid #cbd5e1",
+                    background: "#f8fafc",
+                    color: "#475569",
+                    fontWeight: 600,
+                    cursor: "pointer"
+                  }}
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingEdit}
+                  style={{
+                    flex: 2,
+                    padding: "12px",
+                    borderRadius: "10px",
+                    border: "none",
+                    background: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
+                    color: "white",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    boxShadow: "0 4px 12px rgba(37, 99, 235, 0.25)"
+                  }}
+                >
+                  {submittingEdit ? "กำลังบันทึก..." : "บันทึกการแก้ไข"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* รายการเมนู */}
       <div style={{ padding: "0 12px" }}>
         {menus.length > 0 ? (
@@ -873,6 +1716,22 @@ function MerchantMenus({ merchant, onBack }) {
               </div>
 
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <button
+                  onClick={() => openEditModal(item)}
+                  style={{
+                    background: "#eff6ff",
+                    color: "#2563eb",
+                    border: "1px solid #bfdbfe",
+                    borderRadius: "8px",
+                    padding: "6px 10px",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    cursor: "pointer"
+                  }}
+                  title="แก้ไขเมนู"
+                >
+                  ✏️ แก้ไข
+                </button>
                 <button
                   onClick={() => handleToggle(item.id, item.is_available)}
                   style={{

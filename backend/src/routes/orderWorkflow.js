@@ -19,5 +19,7 @@ router.put('/orders/:order_id/reject', checkRole('MERCHANT'), controller.rejectO
 router.put('/orders/:order_id/start-preparing', checkRole('MERCHANT'), controller.startPreparing);
 router.put('/orders/:order_id/ready', checkRole('MERCHANT'), controller.markReadyForDelivery);
 router.put('/orders/:order_id/assign-rider', checkRole('MERCHANT'), validate(assignRiderSchema), controller.assignRider);
+router.put('/orders/:order_id/self-deliver', checkRole('MERCHANT'), controller.selfDeliver);
+router.put('/orders/:order_id/complete', checkRole('MERCHANT'), controller.completeOrder);
 
 module.exports = router;

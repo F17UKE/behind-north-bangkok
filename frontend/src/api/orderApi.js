@@ -71,6 +71,24 @@ export const orderApi = {
     return res?.data || res;
   },
 
+  // มอบหมาย Rider ให้กับออเดอร์
+  async assignRider(orderId, riderId) {
+    const res = await api.put(`/order-workflow/orders/${orderId}/assign-rider`, { rider_id: Number(riderId) }, {}, "MERCHANT");
+    return res?.data || res;
+  },
+
+  // ร้านค้าเลือกส่งเอง (Self Delivery)
+  async selfDeliver(orderId) {
+    const res = await api.put(`/order-workflow/orders/${orderId}/self-deliver`, {}, {}, "MERCHANT");
+    return res?.data || res;
+  },
+
+  // ร้านค้าจัดส่งสำเร็จ (Complete Order)
+  async completeOrder(orderId) {
+    const res = await api.put(`/order-workflow/orders/${orderId}/complete`, {}, {}, "MERCHANT");
+    return res?.data || res;
+  },
+
   // KDS: ดึงออเดอร์ในครัว
   async getKitchenOrders() {
     const res = await api.get("/merchants/kds/orders", {}, "MERCHANT");

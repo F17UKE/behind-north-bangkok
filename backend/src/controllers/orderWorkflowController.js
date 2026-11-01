@@ -187,3 +187,41 @@ exports.assignRider = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
+
+
+// ร้านค้าเลือกส่งเอง (self-deliver)
+exports.selfDeliver = async (req, res) => {
+  try {
+    const { order_id } = req.params;
+    const order = await repo.getOrderById(order_id);
+
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+    if (order.merchant_id !== req.user.id) return res.status(403).json({ success: false, message: 'Unauthorized' });
+
+    await repo.assignRider(order_id, null);
+    const updated = await repo.updateOrderStatus(order_id, 'IN_DELIVERY');
+    emitOrderStatus(req, order_id, 'IN_DELIVERY', { delivery_by: 'MERCHANT' }, order.merchant_id, order.customer_id);
+
+    res.status(200).json({ success: true, message: 'Merchant self delivering', data: updated[0] });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// ร้านค้าทำรายการจัดส่งสำเร็จ (complete)
+exports.completeOrder = async (req, res) => {
+  try {
+    const { order_id } = req.params;
+    const order = await repo.getOrderById(order_id);
+
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+    if (order.merchant_id !== req.user.id) return res.status(403).json({ success: false, message: 'Unauthorized' });
+
+    const updated = await repo.updateOrderStatus(order_id, 'COMPLETED');
+    emitOrderStatus(req, order_id, 'COMPLETED', {}, order.merchant_id, order.customer_id);
+
+    res.status(200).json({ success: true, message: 'Order completed', data: updated[0] });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
