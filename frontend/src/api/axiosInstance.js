@@ -1,12 +1,21 @@
 // frontend/src/api/axiosInstance.js
 
 export function getApiBaseUrl() {
+  // 1. หากตั้งค่า NEXT_PUBLIC_API_URL เป็น Production domain (ไม่ใช่ localhost) ให้ใช้ค่านั้น
   if (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_API_URL) {
-    return process.env.NEXT_PUBLIC_API_URL;
+    const envUrl = process.env.NEXT_PUBLIC_API_URL;
+    if (!envUrl.includes("localhost") && !envUrl.includes("127.0.0.1")) {
+      return envUrl;
+    }
   }
+
+  // 2. หากเข้าถึงผ่านเบราว์เซอร์ (ทั้ง localhost บน PC และ IP เช่น 192.168.0.x บนมือถือ) ให้ใช้ hostname เดียวกันเสมอ
   if (typeof window !== "undefined" && window.location?.hostname) {
-    return `http://${window.location.hostname}:5000/api`;
+    const host = window.location.hostname;
+    const protocol = window.location.protocol || "http:";
+    return `${protocol}//${host}:5000/api`;
   }
+
   return "http://localhost:5000/api";
 }
 

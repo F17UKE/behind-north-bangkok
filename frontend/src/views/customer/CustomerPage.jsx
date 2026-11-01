@@ -1493,7 +1493,12 @@ function CustomerAuth({ mode, onBack, onSuccess, onSignUp, onLogin, isOrdering }
         onSuccess(res.user || { username, phone });
       }
     } catch (err) {
-      setError(err.message || "การเข้าสู่ระบบไม่สำเร็จ ตรวจสอบชื่อผู้ใช้และรหัสผ่าน");
+      const msg = err.message || "";
+      if (msg === "Load failed" || msg.includes("Failed to fetch") || msg.includes("NetworkError")) {
+        setError("ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์หลังบ้านได้ กรุณาตรวจสอบการเชื่อมต่อ Wi-Fi หรือรีเฟรชหน้าเว็บ");
+      } else {
+        setError(msg || "การเข้าสู่ระบบไม่สำเร็จ ตรวจสอบชื่อผู้ใช้และรหัสผ่าน");
+      }
     } finally {
       setLoading(false);
     }
