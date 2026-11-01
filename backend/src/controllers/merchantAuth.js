@@ -25,7 +25,7 @@ const generateRandomPrefix = async () => {
 // [POST] /api/auth/merchant/register
 const register = async (req, res) => {
     try {
-        const { username, password, email, store_name, promptpay_id, location, store_image_url } = req.body;
+        const { username, password, email, store_name, category, promptpay_id, location, store_image_url } = req.body;
 
         if (!username || !password || !store_name) {
             return res.status(400).json({ error: 'Username, password and store_name are required' });
@@ -51,6 +51,7 @@ const register = async (req, res) => {
             email: email || null,
             password_hash: hashedPassword,
             store_name,
+            category: category || 'ร้านอาหาร',
             promptpay_id: promptpay_id || null,
             prefix: generatedPrefix,
             location: location || null,

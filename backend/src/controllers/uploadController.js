@@ -13,7 +13,6 @@ const uploadSlip = async (req, res) => {
             message: 'Slip uploaded successfully',
             imageUrl: result.publicUrl,
             filePath: result.filePath,
-            isMock: result.isMock
         });
     } catch (error) {
         console.error('Upload slip error:', error);
@@ -33,7 +32,6 @@ const uploadMenuImage = async (req, res) => {
             message: 'Menu image uploaded successfully',
             imageUrl: result.publicUrl,
             filePath: result.filePath,
-            isMock: result.isMock
         });
     } catch (error) {
         console.error('Upload menu image error:', error);
@@ -53,7 +51,6 @@ const uploadStoreImage = async (req, res) => {
             message: 'Store image uploaded successfully',
             imageUrl: result.publicUrl,
             filePath: result.filePath,
-            isMock: result.isMock
         });
     } catch (error) {
         console.error('Upload store image error:', error);

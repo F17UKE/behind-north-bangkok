@@ -18,7 +18,7 @@ if (supabaseUrl && supabaseKey && !supabaseUrl.includes('your-project')) {
         }
     });
 } else {
-    console.warn('⚠️ Supabase credentials not set or using placeholder. Image upload will run in Mock mode.');
+    console.warn('Supabase credentials are not configured. Image upload is unavailable.');
 }
 
 /**
@@ -65,14 +65,9 @@ const uploadImage = async (file, folder = 'general') => {
     const fileName = `${Date.now()}_${randomHash}${fileExt}`;
     const filePath = `${folder}/${fileName}`;
 
-    // ถ้าไม่มีการต่อ Supabase จริง ให้ Fallback เป็น Mock URL เพื่อให้ระบบไม่ล่มระหว่างทดสอบ
+    // ห้ามส่ง URL จำลองกลับไปให้ client เพราะไฟล์จะเปิดไม่ได้จริง
     if (!supabase) {
-        console.log(`[Storage Mock] Uploaded ${fileName} to mock storage`);
-        return {
-            publicUrl: `https://storage.mock.local/${bucketName}/${filePath}`,
-            filePath,
-            isMock: true
-        };
+        throw new Error('Image storage is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.');
     }
 
     // อัปโหลดไฟล์ขึ้น Supabase
@@ -95,8 +90,7 @@ const uploadImage = async (file, folder = 'general') => {
 
     return {
         publicUrl: urlData.publicUrl,
-        filePath,
-        isMock: false
+        filePath
     };
 };
 

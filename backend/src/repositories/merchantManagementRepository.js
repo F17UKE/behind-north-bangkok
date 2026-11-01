@@ -4,9 +4,18 @@ class MerchantManagementRepository {
   // --- 1. Store Profile Management ---
   async getProfile(merchantId) {
     return await db('MERCHANTS')
-      .select('id', 'username', 'store_name', 'promptpay_id', 'prefix', 'is_open', 'location', 'store_image_url')
+      .select('id', 'username', 'store_name', 'promptpay_id', 'prefix', 'is_approved', 'is_open', 'location', 'store_image_url')
       .where('id', merchantId)
       .first();
+  }
+
+  async getPasswordHash(merchantId) {
+    const merchant = await db('MERCHANTS').select('password_hash').where('id', merchantId).first();
+    return merchant?.password_hash || null;
+  }
+
+  async updatePassword(merchantId, passwordHash) {
+    return db('MERCHANTS').where('id', merchantId).update({ password_hash: passwordHash });
   }
 
   async updateProfile(merchantId, profileData) {
@@ -24,6 +33,10 @@ class MerchantManagementRepository {
   }
 
   // --- 2. Menu Management ---
+  async getMenuItems(merchantId) {
+    return await db('MENU_ITEMS').where('merchant_id', merchantId).orderBy('id', 'desc');
+  }
+
   async createMenuItem(merchantId, menuData) {
     return await db('MENU_ITEMS')
       .insert({ ...menuData, merchant_id: merchantId })

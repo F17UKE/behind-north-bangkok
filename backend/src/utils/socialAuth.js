@@ -16,16 +16,7 @@ const verifyGoogleToken = async (idToken) => {
         throw new Error('Google ID Token is required');
     }
 
-    // รองรับ Mock Token สำหรับการทดสอบในโหมด Dev
-    if (idToken.startsWith('mock_google_token_') || !googleClientId) {
-        const mockSuffix = idToken.replace('mock_google_token_', '') || 'dev_user';
-        return {
-            googleId: `google_mock_id_${mockSuffix}`,
-            email: `${mockSuffix}@gmail.com`,
-            name: `Google User (${mockSuffix})`,
-            picture: 'https://placehold.co/150'
-        };
-    }
+    if (!googleClientId) throw new Error('Google login is not configured. Set GOOGLE_CLIENT_ID.');
 
     try {
         const ticket = await googleClient.verifyIdToken({
@@ -59,17 +50,6 @@ const verifyGoogleToken = async (idToken) => {
 const verifyLineToken = async (accessToken, idToken = null) => {
     if (!accessToken && !idToken) {
         throw new Error('LINE Access Token or ID Token is required');
-    }
-
-    // รองรับ Mock Token สำหรับการทดสอบ
-    if (accessToken?.startsWith('mock_line_token_') || idToken?.startsWith('mock_line_token_')) {
-        const mockSuffix = (accessToken || idToken).replace('mock_line_token_', '') || 'dev_line_user';
-        return {
-            lineId: `line_mock_id_${mockSuffix}`,
-            name: `LINE User (${mockSuffix})`,
-            picture: 'https://placehold.co/150',
-            email: `${mockSuffix}@line.local`
-        };
     }
 
     try {

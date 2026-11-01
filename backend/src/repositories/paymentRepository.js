@@ -15,6 +15,8 @@ const getOrderPaymentInfo = async (orderId, trx = db) => {
         .first();
 };
 
+const getOrderOwner = async (orderId) => db('ORDERS').select('customer_id', 'merchant_id').where('id', orderId).first();
+
 // ตรวจสอบว่ามี ref_number นี้ในระบบหรือยัง
 const checkRefNumberExists = async (refNumber, trx = db) => {
     const result = await trx('PAYMENT_SLIPS')
@@ -51,6 +53,7 @@ const purgeOldPaymentSlips = async (days = 7) => {
 
 module.exports = {
     getOrderPaymentInfo,
+    getOrderOwner,
     checkRefNumberExists,
     saveSlip,
     updateOrderStatus,

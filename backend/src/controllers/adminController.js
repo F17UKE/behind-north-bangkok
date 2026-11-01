@@ -1,6 +1,23 @@
 // backend/src/controllers/adminController.js
 const knex = require('../db');
 
+const getUsers = async (req, res) => {
+    try {
+        const [customers, merchants] = await Promise.all([
+            knex('CUSTOMERS').select('id', 'username', 'email', 'phone'),
+            knex('MERCHANTS').select('id', 'username', 'email', 'store_name', 'is_approved', 'is_open')
+        ]);
+        const users = [
+            ...customers.map((user) => ({ ...user, role: 'CUSTOMER', name: user.username, status: 'active' })),
+            ...merchants.map((user) => ({ ...user, role: 'MERCHANT', name: user.store_name, status: user.is_approved ? 'active' : 'pending' }))
+        ];
+        return res.status(200).json({ success: true, count: users.length, data: users });
+    } catch (error) {
+        console.error('Error fetching users:', error);
+        return res.status(500).json({ success: false, error: 'Failed to fetch users' });
+    }
+};
+
 /**
  * [GET] /api/admin/merchants/pending
  * ดึงรายการร้านค้าทั้งหมดที่รอการอนุมัติ (is_approved = false)
@@ -149,6 +166,7 @@ const rejectMerchant = async (req, res) => {
 };
 
 module.exports = {
+    getUsers,
     getPendingMerchants,
     getAllMerchants,
     approveMerchant,

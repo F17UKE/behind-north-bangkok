@@ -21,6 +21,21 @@ export default function TestChatPage() {
   const [messageText, setMessageText] = useState("");
   const [chatHistory, setChatHistory] = useState([]);
 
+  function pushSystem(text) {
+    setChatHistory((prev) => [...prev, { type: "system", text, ts: Date.now() }]);
+  }
+
+  function pushMessageFromServer(payload) {
+    setChatHistory((prev) => [...prev, {
+      type: "message",
+      from: payload.from || payload.senderName || "Unknown",
+      role: payload.role || payload.senderSubRole || (payload.isMerchantSender ? "STORE" : "CUSTOMER"),
+      contentText: payload.contentText || payload.content_text || payload.text || "",
+      ts: payload.ts || Date.now(),
+      isSelf: false,
+    }]);
+  }
+
   // ป้องกันการเชื่อมต่อซ้ำ (React Strict Mode จะ mount/unmount สองครั้งใน dev)
   useEffect(() => {
     // สร้าง socket แต่ยังไม่ส่ง join ใด ๆ
@@ -82,27 +97,6 @@ export default function TestChatPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const pushSystem = (text) => {
-    setChatHistory((prev) => [
-      ...prev,
-      { type: "system", text, ts: Date.now() },
-    ]);
-  };
-
-  const pushMessageFromServer = (payload) => {
-    setChatHistory((prev) => [
-      ...prev,
-      {
-        type: "message",
-        from: payload.from || payload.senderName || "Unknown",
-        role: payload.role || payload.senderSubRole || (payload.isMerchantSender ? "STORE" : "CUSTOMER"),
-        contentText: payload.contentText || payload.content_text || payload.text || "",
-        ts: payload.ts || Date.now(),
-        isSelf: false,
-      },
-    ]);
-  };
 
   const handleJoinRoom = () => {
     if (!socketRef.current || !socketRef.current.connected) {

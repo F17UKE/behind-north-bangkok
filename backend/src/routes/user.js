@@ -49,4 +49,22 @@ router.get('/me', verifyToken, checkRole(['CUSTOMER', 'MERCHANT', 'RIDER', 'ADMI
     }
 });
 
+router.patch('/me', verifyToken, checkRole(['CUSTOMER']), async (req, res) => {
+    try {
+        const { username, phone, dormitory_id, room_number } = req.body;
+        const updates = {};
+        if (username !== undefined) updates.username = String(username).trim().slice(0, 30);
+        if (phone !== undefined) updates.phone = String(phone).trim().slice(0, 20) || null;
+        if (dormitory_id !== undefined) updates.dormitory_id = dormitory_id ? Number(dormitory_id) : null;
+        if (room_number !== undefined) updates.room_number = String(room_number).trim().slice(0, 20) || null;
+        const profile = await customerRepo.updateCustomer(req.user.id, updates);
+        if (!profile) return res.status(404).json({ error: 'User not found' });
+        delete profile.password_hash;
+        return res.status(200).json({ success: true, profile });
+    } catch (error) {
+        console.error('Update profile error:', error);
+        return res.status(500).json({ error: 'Failed to update profile' });
+    }
+});
+
 module.exports = router;

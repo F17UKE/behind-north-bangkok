@@ -2,7 +2,6 @@
 const generatePayload = require('promptpay-qr'); 
 const qrcode = require('qrcode');
 const paymentRepository = require('../repositories/paymentRepository');
-const slipVerification = require('../utils/slipVerification');
 const storageService = require('../services/storageService');
 const db = require('../db');
 
@@ -11,6 +10,10 @@ const generatePromptPayQR = async (req, res) => {
     const { order_id } = req.params;
 
     try {
+        if (req.user.role !== 'CUSTOMER') return res.status(403).json({ error: 'Only the customer can access this payment' });
+        const owner = await paymentRepository.getOrderOwner(order_id);
+        if (!owner) return res.status(404).json({ error: 'Order not found' });
+        if (Number(owner.customer_id) !== Number(req.user.id)) return res.status(403).json({ error: 'You do not own this order' });
         const orderInfo = await paymentRepository.getOrderPaymentInfo(order_id);
 
         if (!orderInfo) {
@@ -52,21 +55,22 @@ const generatePromptPayQR = async (req, res) => {
     }
 };
 
-// 2. อัปโหลดและตรวจสอบสลิป
+// 2. อัปโหลดรูปสลิปและรับชำระเงินในโหมดทดลอง (ไม่ตรวจสอบความแท้/ยอดเงิน)
 const uploadAndVerifySlip = async (req, res) => {
     const { order_id } = req.params;
-    let finalImageUrl = req.body?.image_url;
+    let finalImageUrl;
 
     try {
-        // รองรับทั้งการอัปโหลดไฟล์ตรงๆ (req.file) หรือส่ง image_url ที่อัปโหลดไว้แล้วมา
-        if (req.file) {
-            const uploadResult = await storageService.uploadImage(req.file, 'slips');
-            finalImageUrl = uploadResult.publicUrl;
+        if (req.user.role !== 'CUSTOMER') return res.status(403).json({ error: 'Only the customer can submit a payment slip' });
+        const owner = await paymentRepository.getOrderOwner(order_id);
+        if (!owner) return res.status(404).json({ error: 'Order not found' });
+        if (Number(owner.customer_id) !== Number(req.user.id)) return res.status(403).json({ error: 'You do not own this order' });
+        if (!req.file) {
+            return res.status(400).json({ error: 'กรุณาแนบรูปสลิปก่อนส่ง' });
         }
 
-        if (!finalImageUrl) {
-            return res.status(400).json({ error: 'Image file or image_url is required' });
-        }
+        const uploadResult = await storageService.uploadImage(req.file, 'slips');
+        finalImageUrl = uploadResult.publicUrl;
 
         // เปิด Transaction เพราะมีการ Insert (สลิป) และ Update (สถานะออเดอร์) พร้อมกัน
         const trx = await db.transaction();
@@ -84,21 +88,8 @@ const uploadAndVerifySlip = async (req, res) => {
                 return res.status(400).json({ error: 'Payment already processed or order cancelled' });
             }
 
-            // 2. ส่งรูปสลิปไปตรวจสอบ (จำลองผ่าน Mock Verification)
-            const verificationResult = await slipVerification.verifySlip(
-                finalImageUrl, 
-                orderInfo.total_amount, 
-                orderInfo.promptpay_id,
-                trx
-            );
-
-            if (!verificationResult.isValid) {
-                await trx.rollback();
-                return res.status(400).json({ error: verificationResult.message });
-            }
-
-            // 3. ถ้าสลิปถูกต้อง บันทึกข้อมูลลงตาราง PAYMENT_SLIPS
-            await paymentRepository.saveSlip(order_id, finalImageUrl, verificationResult.refNumber, trx);
+            // โหมดทดลอง: ถือว่าผ่านเมื่ออัปโหลดรูปสำเร็จ ไม่ตรวจความแท้หรือยอดเงิน
+            await paymentRepository.saveSlip(order_id, finalImageUrl, null, trx);
 
             // 4. เปลี่ยนสถานะออเดอร์เป็น PAID
             await paymentRepository.updateOrderStatus(order_id, 'PAID', trx);
@@ -109,20 +100,22 @@ const uploadAndVerifySlip = async (req, res) => {
             // 5. ส่งสัญญาณ Socket.io แจ้งเตือนร้านค้าและลูกค้าว่าชำระเงินเรียบร้อยแล้ว
             const io = req.app.get('io');
             if (io) {
-                io.to(`order_${order_id}`).emit('ORDER_STATUS_UPDATED', {
+                const statusUpdate = {
                     order_id: Number(order_id),
                     status: 'PAID',
                     updated_by: 'CUSTOMER',
                     updated_at: new Date()
-                });
+                };
+                io.to(`order_${order_id}`).emit('ORDER_STATUS_UPDATED', statusUpdate);
+                io.to(`merchant_${owner.merchant_id}`).emit('ORDER_STATUS_UPDATED', statusUpdate);
             }
             
             return res.status(200).json({ 
                 success: true,
-                message: 'Payment verified successfully (Mock Mode)',
+                message: 'รับรูปสลิปแล้ว (โหมดทดลอง)',
                 status: 'PAID',
                 imageUrl: finalImageUrl,
-                refNumber: verificationResult.refNumber
+                refNumber: null
             });
 
         } catch (innerError) {

@@ -1,16 +1,21 @@
 const repo = require('../repositories/orderWorkflowRepository');
 
 // Helper สำหรับยิง Socket Event
-const emitOrderStatus = (req, orderId, status, extra = {}) => {
+const emitOrderStatus = (req, order, status, extra = {}) => {
   const io = req.app.get('io');
   if (io) {
-    io.to(`order_${orderId}`).emit('ORDER_STATUS_UPDATED', {
-      order_id: Number(orderId),
+    const orderId = Number(order.id);
+    const payload = {
+      order_id: orderId,
       status,
       updated_by: req.user?.role,
       updated_at: new Date(),
       ...extra
+    };
+    io.to(`order_${orderId}`).emit('ORDER_STATUS_UPDATED', {
+      ...payload
     });
+    io.to(`merchant_${order.merchant_id}`).emit('ORDER_STATUS_UPDATED', payload);
   }
 };
 
@@ -39,7 +44,7 @@ exports.cancelOrder = async (req, res) => {
     }
 
     const updated = await repo.updateOrderStatus(order_id, 'CANCELLED_BY_CUSTOMER');
-    emitOrderStatus(req, order_id, 'CANCELLED_BY_CUSTOMER');
+    emitOrderStatus(req, order, 'CANCELLED_BY_CUSTOMER');
 
     res.status(200).json({ success: true, data: updated[0] });
   } catch (error) {
@@ -72,7 +77,7 @@ exports.acceptOrder = async (req, res) => {
     }
 
     const updated = await repo.updateOrderStatus(order_id, 'PENDING_PAYMENT');
-    emitOrderStatus(req, order_id, 'PENDING_PAYMENT');
+    emitOrderStatus(req, order, 'PENDING_PAYMENT');
 
     res.status(200).json({ success: true, data: updated[0] });
   } catch (error) {
@@ -93,7 +98,7 @@ exports.rejectOrder = async (req, res) => {
     }
 
     const updated = await repo.updateOrderStatus(order_id, 'REJECTED_BY_MERCHANT');
-    emitOrderStatus(req, order_id, 'REJECTED_BY_MERCHANT');
+    emitOrderStatus(req, order, 'REJECTED_BY_MERCHANT');
 
     res.status(200).json({ success: true, data: updated[0] });
   } catch (error) {
@@ -115,7 +120,7 @@ exports.startPreparing = async (req, res) => {
     }
 
     const updated = await repo.updateOrderStatus(order_id, 'PREPARING');
-    emitOrderStatus(req, order_id, 'PREPARING');
+    emitOrderStatus(req, order, 'PREPARING');
 
     // แจ้งเตือนไปยังหน้าจอครัว KDS
     const io = req.app.get('io');
@@ -146,7 +151,7 @@ exports.assignRider = async (req, res) => {
     }
 
     const updated = await repo.assignRider(order_id, rider_id);
-    emitOrderStatus(req, order_id, 'READY_FOR_DELIVERY', { rider_id });
+    emitOrderStatus(req, order, 'READY_FOR_DELIVERY', { rider_id });
 
     // แจ้งเตือนไปยัง Dispatch Board ของ Rider โดยเฉพาะ
     const io = req.app.get('io');

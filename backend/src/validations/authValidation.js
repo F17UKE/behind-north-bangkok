@@ -35,6 +35,7 @@ const merchantRegisterSchema = z.object({
     store_name: z.string({ required_error: 'Store name is required' })
         .min(2, 'Store name must be at least 2 characters')
         .max(100),
+    category: z.string().max(80).optional().nullable(),
     email: z.string().email('Invalid email address').optional().nullable(),
     promptpay_id: z.string()
         .regex(/^[0-9]{10,13}$/, 'PromptPay ID must be a 10-digit phone number or 13-digit National ID')
@@ -47,6 +48,11 @@ const merchantRegisterSchema = z.object({
 const merchantLoginSchema = z.object({
     username: z.string({ required_error: 'Username or Email is required' }).min(1),
     password: z.string({ required_error: 'Password is required' }).min(1)
+});
+
+const merchantPasswordChangeSchema = z.object({
+    current_password: z.string({ required_error: 'Current password is required' }).min(1),
+    new_password: z.string({ required_error: 'New password is required' }).min(8).max(128)
 });
 
 // 3. Social Logins
@@ -87,6 +93,7 @@ module.exports = {
     customerLoginSchema,
     merchantRegisterSchema,
     merchantLoginSchema,
+    merchantPasswordChangeSchema,
     googleLoginSchema,
     lineLoginSchema,
     merchantOnboardSchema,

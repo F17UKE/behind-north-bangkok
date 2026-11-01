@@ -1,41 +1,55 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { BottomNav, MobileShell, SearchBar, StatusPill, TopBar, EmptyState } from "../../components/AppShell";
-import { adminUsers, statusLabel } from "../../data/mockData";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { BottomNav, MobileShell, SearchBar, TopBar, EmptyState } from "../../components/AppShell";
+import { apiData, apiRequest, clearAuthSession, getAuthSession, setAuthSession } from "../../api/axiosInstance";
+import { statusLabel } from "../../data/orderStatus";
 
 export default function AdminPage() {
-  const [screen, setScreen] = useState("home");
-  const [users, setUsers] = useState(adminUsers);
-  const [selectedUser, setSelectedUser] = useState(adminUsers[0]);
-  const [query, setQuery] = useState("");
-  const [tab, setTab] = useState("all");
-  const [notice, setNotice] = useState(0);
-
-  const filtered = useMemo(()=>users.filter((u)=>{
-    const q=`${u.name} ${u.phone} ${u.role}`.toLowerCase();
-    if(!q.includes(query.toLowerCase())) return false;
-    if(tab === "user") return u.role === "User";
-    if(tab === "merchant") return u.role === "Merchant";
-    return true;
-  }),[users,query,tab]);
-
-  const changeStatus=(status)=>{ setUsers((all)=>all.map((u)=>u.id===selectedUser.id?{...u,status}:u)); setSelectedUser((u)=>({...u,status})); };
-
-  return <MobileShell tone="admin"><div key={screen} className="admin-page screen-enter">
-    {screen === "home" && <AdminHome notice={notice} go={setScreen} />}
-    {screen === "users" && <AdminUsers users={filtered} query={query} setQuery={setQuery} tab={tab} setTab={setTab} onBack={()=>setScreen("home")} onOpen={(u)=>{setSelectedUser(u);setScreen("detail");}} />}
-    {screen === "detail" && <AdminDetail user={selectedUser} onBack={()=>setScreen("users")} onChangeStatus={changeStatus} />}
-    {screen === "more" && <AdminMore onBack={()=>setScreen("home")} />}
-    {screen === "notice" && <AdminNotice onBack={()=>setScreen("home")} />}
-    <BottomNav tone="admin" active={screen} onChange={(key)=>setScreen(key)} items={[{key:"home",label:"Home",icon:"⌂"},{key:"users",label:"User",icon:"♙"},{key:"notice",label:"Notice",icon:"●"},{key:"more",label:"More",icon:"•••"}]} />
+  const [session, setSession] = useState(null); const [screen, setScreen] = useState("home");
+  const [users, setUsers] = useState([]); const [merchants, setMerchants] = useState([]); const [orders, setOrders] = useState([]);
+  const [selectedUser, setSelectedUser] = useState(null); const [query, setQuery] = useState(""); const [tab, setTab] = useState("all");
+  const [error, setError] = useState(""); const [busy, setBusy] = useState(false); const [credentials, setCredentials] = useState({ username: "", password: "" }); const [loginError, setLoginError] = useState("");
+  const refresh = useCallback(async () => {
+    if (getAuthSession()?.role !== "ADMIN") return;
+    setBusy(true); setError("");
+    try {
+      const [u, m, o] = await Promise.all([apiRequest("/admin/users"), apiRequest("/admin/merchants"), apiRequest("/orders")]);
+      setUsers(apiData(u)); setMerchants(apiData(m)); setOrders(apiData(o));
+    } catch (e) { setError(e.message); }
+    finally { setBusy(false); }
+  }, []);
+  useEffect(() => { const sync=()=>setSession(getAuthSession()); sync(); window.addEventListener("storage",sync); window.addEventListener("behind-nb-auth-changed",sync); return()=>{window.removeEventListener("storage",sync);window.removeEventListener("behind-nb-auth-changed",sync);}; }, []);
+  useEffect(() => {
+    if (session?.role !== "ADMIN") return undefined;
+    const timer = window.setTimeout(refresh, 0);
+    return () => window.clearTimeout(timer);
+  }, [session,refresh]);
+  const filtered = useMemo(() => users.filter((u) => {
+    const role = u.role === "CUSTOMER" ? "user" : "merchant";
+    const text = `${u.name} ${u.phone || ""} ${u.email || ""} ${role}`.toLowerCase();
+    return text.includes(query.toLowerCase()) && (tab === "all" || tab === role);
+  }), [users, query, tab]);
+  async function login(e) {
+    e.preventDefault(); setLoginError("");
+    try { const result = apiData(await apiRequest("/auth/admin/login", { method: "POST", body: credentials })); setAuthSession({ token: result.token, role: "ADMIN", user: result.user }); setSession(getAuthSession()); }
+    catch (e) { setLoginError(e.message); }
+  }
+  async function reviewMerchant(merchant, action) {
+    try { await apiRequest(`/admin/merchants/${merchant.id}/${action}`, { method: "PATCH" }); await refresh(); if(selectedUser?.id===merchant.id) setSelectedUser({...selectedUser,is_approved:action==="approve",status:action==="approve"?"active":"pending"}); }
+    catch (e) { setError(e.message); }
+  }
+  if(session?.role !== "ADMIN") return <MobileShell tone="admin"><div className="admin-page"><div className="merchant-order-card"><h1>เข้าสู่ระบบผู้ดูแล</h1><p>ลงชื่อเข้าใช้เพื่อจัดการข้อมูลจากระบบ</p><form onSubmit={login}><input required placeholder="ชื่อผู้ใช้" value={credentials.username} onChange={(e)=>setCredentials({...credentials,username:e.target.value})}/><input required type="password" placeholder="รหัสผ่าน" value={credentials.password} onChange={(e)=>setCredentials({...credentials,password:e.target.value})}/><button className="primary-btn">เข้าสู่ระบบ</button></form>{loginError&&<p role="alert">{loginError}</p>}</div></div></MobileShell>;
+  const completed = orders.filter((o)=>o.status==="COMPLETED");
+  return <MobileShell tone="admin"><div className="admin-page screen-enter">
+    {error&&<div className="api-error" role="alert">{error}<button onClick={()=>setError("")}>×</button></div>}
+    {screen==="home"&&<><div className="admin-header"><div className="avatar peach">♙</div><div><b>{session.user?.username||"ผู้ดูแลระบบ"}</b><small>Admin · ข้อมูลจากฐานข้อมูล</small></div><button onClick={refresh} disabled={busy}>↻</button></div><div className="admin-stats"><div><b>{orders.length}</b><small>ออเดอร์ทั้งหมด</small></div><div><b>{completed.length}</b><small>สำเร็จ</small></div><div><b>{merchants.length}</b><small>ร้านค้า</small></div><div><b>{users.filter((u)=>u.role==="CUSTOMER").length}</b><small>ลูกค้า</small></div></div><div className="section-header"><b>ร้านค้ารออนุมัติ</b><button onClick={()=>setScreen("merchants")}>ดูทั้งหมด ›</button></div>{merchants.filter((m)=>!m.is_approved).slice(0,5).map((m)=><div className="admin-user-row" key={m.id}><div className="avatar small">🏪</div><div><b>{m.store_name}</b><small>{m.location||"ไม่ได้ระบุที่ตั้ง"}</small></div><button onClick={()=>reviewMerchant(m,"approve")}>อนุมัติ</button></div>)}{!merchants.some((m)=>!m.is_approved)&&<p>ไม่มีร้านค้ารออนุมัติ</p>}<div className="section-header"><b>ออเดอร์ล่าสุด</b><button onClick={()=>setScreen("orders")}>ดูทั้งหมด ›</button></div>{orders.slice(0,5).map((o)=><div className="admin-user-row" key={o.id}><div><b>{o.order_code}</b><small>{o.store_name} · {o.customer_username}</small></div><span>{statusLabel[o.status]||o.status}</span></div>)}</>}
+    {screen==="users"&&<><TopBar title="ผู้ใช้งาน" subtitle={`${users.length} บัญชี`} onBack={()=>setScreen("home")}/><SearchBar value={query} onChange={setQuery} placeholder="ค้นหาชื่อหรืออีเมล"/><div className="filter-scroll">{[["all","ทั้งหมด"],["user","ลูกค้า"],["merchant","ร้านค้า"]].map(([k,l])=><button key={k} className={tab===k?"active":""} onClick={()=>setTab(k)}>{l}</button>)}</div>{filtered.map((u)=><button className="admin-user-row" key={`${u.role}-${u.id}`} onClick={()=>{setSelectedUser(u);setScreen("detail");}}><div className="avatar small">{u.role==="MERCHANT"?"🏪":"👤"}</div><div><b>{u.name}</b><small>{u.email||u.phone||"ไม่มีข้อมูลติดต่อ"}</small></div><span>{u.role==="MERCHANT"?"ร้านค้า":"ลูกค้า"}</span><small>{u.status}</small></button>)}{!filtered.length&&<EmptyState title="ไม่พบผู้ใช้" text="ข้อมูลจะแสดงเมื่อมีบัญชีในระบบ"/>}</>}
+    {screen==="merchants"&&<><TopBar title="จัดการร้านค้า" onBack={()=>setScreen("home")}/>{merchants.map((m)=><div className="merchant-order-card" key={m.id}><b>{m.store_name}</b><small>{m.location||"ไม่ระบุที่ตั้ง"} · {m.is_approved?"อนุมัติแล้ว":"รออนุมัติ"} · {m.is_open?"เปิดร้าน":"ปิดร้าน"}</small><div>{!m.is_approved&&<button onClick={()=>reviewMerchant(m,"approve")}>อนุมัติ</button>}{m.is_approved&&<button onClick={()=>reviewMerchant(m,"reject")}>ระงับการอนุมัติ</button>}</div></div>)}{!merchants.length&&<EmptyState title="ไม่มีร้านค้า" text="ร้านค้าที่สมัครจะแสดงที่นี่"/>}</>}
+    {screen==="orders"&&<><TopBar title="ออเดอร์ทั้งหมด" onBack={()=>setScreen("home")}/>{orders.map((o)=><div className="merchant-order-card" key={o.id}><b>{o.order_code}</b><small>{o.store_name} · {o.customer_username} · {new Date(o.created_at).toLocaleString("th-TH")}</small><span>{statusLabel[o.status]||o.status} · {Number(o.total_amount||0).toLocaleString("th-TH")} ฿</span></div>)}{!orders.length&&<EmptyState title="ไม่มีออเดอร์" text="ออเดอร์จากระบบจะแสดงที่นี่"/>}</>}
+    {screen==="detail"&&selectedUser&&<><TopBar title="รายละเอียดบัญชี" onBack={()=>setScreen("users")}/><div className="merchant-order-card"><h2>{selectedUser.name}</h2><p>{selectedUser.role}</p><p>{selectedUser.email||"ไม่ระบุอีเมล"}</p><p>{selectedUser.phone||"ไม่ระบุเบอร์โทร"}</p>{selectedUser.role==="MERCHANT"&&<><p>{selectedUser.is_approved?"อนุมัติแล้ว":"รออนุมัติ"} · {selectedUser.is_open?"เปิดร้าน":"ปิดร้าน"}</p>{!selectedUser.is_approved&&<button className="primary-btn" onClick={()=>reviewMerchant(selectedUser,"approve")}>อนุมัติร้าน</button>}{selectedUser.is_approved&&<button onClick={()=>reviewMerchant(selectedUser,"reject")}>ระงับการอนุมัติ</button>}</>}<p>รายละเอียดบัญชีอ้างอิงจากข้อมูล backend ที่มี</p></div></>}
+    {screen==="more"&&<><TopBar title="ตั้งค่า" onBack={()=>setScreen("home")}/><div className="merchant-order-card"><p>บัญชีผู้ดูแล: {session.user?.username}</p><button onClick={()=>{clearAuthSession();setSession(null);setScreen("home");}}>ออกจากระบบ</button></div></>}
+    {screen==="notice"&&<><TopBar title="รายการที่ต้องติดตาม" onBack={()=>setScreen("home")}/><div className="merchant-order-card"><b>ร้านค้ารออนุมัติ</b><p>{merchants.filter((m)=>!m.is_approved).length} ร้าน</p><button onClick={()=>setScreen("merchants")}>ตรวจสอบร้านค้า</button></div><div className="merchant-order-card"><b>ออเดอร์ที่กำลังดำเนินการ</b><p>{orders.filter((o)=>!["COMPLETED","CANCELLED_BY_CUSTOMER","REJECTED_BY_MERCHANT"].includes(o.status)).length} รายการ</p><button onClick={()=>setScreen("orders")}>ดูออเดอร์</button></div></>}
+    <BottomNav tone="admin" active={screen} onChange={setScreen} items={[{key:"home",label:"หน้าหลัก",icon:"⌂"},{key:"users",label:"ผู้ใช้",icon:"♙"},{key:"notice",label:"ติดตาม",icon:"●"},{key:"more",label:"อื่นๆ",icon:"•••"}]}/>
   </div></MobileShell>;
 }
-
-function AdminHome({ go }) {
-  return <><div className="admin-header"><div className="avatar peach">👤</div><div><b>แอดมินครัวหลังมอ</b><small>Admin</small></div><button>⌕</button></div><div className="admin-stats"><div><b>24</b><small>Order Today</small><em>+XX%</em></div><div><b>1,560</b><small>Revenue Today</small><em>+XX%</em></div><div><b>86</b><small>Total Shop</small><em>+XX%</em></div><div><b>1,254</b><small>Total User</small><em>+XX%</em></div></div><div className="sales-card"><div className="sales-head"><b>Sale Revenue</b><span>View</span></div><div className="chart">{[30,42,35,50,43,64,58,76,62,84].map((h,i)=><i key={i} style={{height:`${h}%`}} />)}</div><small>9/9　10/9　11/9　12/9　13/9</small></div><button className="admin-action-card" onClick={()=>go("users")}><span>👤</span><div><b>Manage Users</b><small>User / Merchant ผู้ใช้งาน</small></div><strong>›</strong></button><button className="admin-action-card" onClick={()=>go("notice")}><span>🔔</span><div><b>Notices</b><small>แจ้งเตือนและ Support</small></div><strong>›</strong></button></>;
-}
-function AdminUsers({ users, query, setQuery, tab, setTab, onBack, onOpen }) { return <><TopBar title="User/Merchant ผู้ใช้งาน" subtitle="จัดการผู้ใช้งาน" onBack={onBack} action={<button className="topbar-btn">⋯</button>} /><SearchBar value={query} onChange={setQuery} placeholder="Search..." /><div className="filter-scroll"><button className={tab==="all"?"active":""} onClick={()=>setTab("all")}>All</button><button className={tab==="user"?"active":""} onClick={()=>setTab("user")}>User</button><button className={tab==="merchant"?"active":""} onClick={()=>setTab("merchant")}>Merchant</button></div>{users.length?users.map((u)=><button className="admin-user-row" key={u.id} onClick={()=>onOpen(u)}><div className="avatar small">👤</div><div><b>{u.name}</b><small>{u.phone}</small></div><span>{u.role}</span><small>{u.status}</small></button>):<EmptyState title="No users" text="ไม่พบข้อมูลผู้ใช้งาน" />}</>; }
-function AdminDetail({ user, onBack, onChangeStatus }) { return <><div className="admin-detail-head"><button onClick={onBack}>‹</button><b>User Detail ประวัติผู้ใช้งาน</b></div><div className="detail-profile"><div className="detail-avatar">👨</div><div><h2>{user.name}</h2><span className="green-text">● {user.status}</span></div></div><div className="detail-contact"><div>☎ Tel. {user.phone}</div><div>✉ mutty@example.com</div><div>📍 หอพักหลังมอ มจพ.</div></div><div className="detail-stats"><div><b>20</b><small>จำนวนออเดอร์</small></div><div><b>XX</b><small>ยอดใช้จ่ายรวม</small></div></div><div className="detail-buttons"><button onClick={()=>onChangeStatus("active")}>เปิดใช้งาน</button><button>ส่งข้อความ</button><button>ระงับบัญชี</button><button className="danger-filled" onClick={()=>onChangeStatus("blocked")}>บล็อกบัญชี</button></div></>; }
-function AdminMore({ onBack }) { return <><TopBar title="Setting การตั้งค่า" onBack={onBack} /><div className="setting-profile"><div className="detail-avatar">👤</div><div><b>แอดมินครัวหลังมอ</b><small>Admin</small></div></div>{["ข้อมูลส่วนตัว","เปลี่ยนรหัสผ่าน","การแจ้งเตือน","ภาษา","เกี่ยวกับระบบ"].map((x)=><button className="setting-row" key={x}>{x}<span>›</span></button>)}<button className="logout-admin">ออกจากระบบ</button></>; }
-function AdminNotice({ onBack }) { return <><TopBar title="Notice" subtitle="Support" onBack={onBack} /><div className="notice-card"><b>Support</b><small>ระบบช่วยเหลือ</small><p>มีข้อความจากร้านค้า 3 รายการที่รอการตอบกลับ</p><button className="primary-btn">Open Support</button></div><div className="notice-card"><b>Order Alert</b><small>ระบบออเดอร์</small><p>มีออเดอร์ที่กำลังดำเนินการ 18 รายการ</p></div></>; }

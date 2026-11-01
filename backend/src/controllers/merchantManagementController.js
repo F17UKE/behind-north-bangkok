@@ -1,4 +1,5 @@
 const repo = require('../repositories/merchantManagementRepository');
+const { comparePassword, hashPassword } = require('../utils/hash');
 
 // --- 1. Profile Controllers ---
 exports.getProfile = async (req, res) => {
@@ -22,6 +23,20 @@ exports.updateProfile = async (req, res) => {
   }
 };
 
+exports.changePassword = async (req, res) => {
+  try {
+    const merchantId = req.user.id;
+    const currentHash = await repo.getPasswordHash(merchantId);
+    if (!currentHash || !(await comparePassword(req.body.current_password, currentHash))) {
+      return res.status(400).json({ success: false, message: 'รหัสผ่านปัจจุบันไม่ถูกต้อง' });
+    }
+    await repo.updatePassword(merchantId, await hashPassword(req.body.new_password));
+    return res.status(200).json({ success: true, message: 'เปลี่ยนรหัสผ่านเรียบร้อยแล้ว' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
 exports.updateStatus = async (req, res) => {
   try {
     const merchantId = req.user.id;
@@ -34,6 +49,15 @@ exports.updateStatus = async (req, res) => {
 };
 
 // --- 2. Menu Controllers ---
+exports.getMenus = async (req, res) => {
+  try {
+    const menus = await repo.getMenuItems(req.user.id);
+    res.status(200).json({ success: true, data: menus });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
 exports.createMenu = async (req, res) => {
   try {
     const merchantId = req.user.id;

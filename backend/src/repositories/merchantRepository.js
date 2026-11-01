@@ -4,7 +4,7 @@ class MerchantRepository {
   // 1. ดึงรายการร้านค้าทั้งหมดที่เปิดให้บริการ (is_open = true และผ่านการอนุมัติ is_approved = true)
   async findAllOpenMerchants() {
     return await db('MERCHANTS')
-      .select('id', 'store_name', 'prefix', 'is_open', 'location', 'store_image_url')
+      .select('id', 'store_name', 'category', 'prefix', 'is_open', 'location', 'store_image_url')
       .where('is_open', true)
       .andWhere(function() {
         this.where('is_approved', true).orWhereNull('is_approved');
@@ -14,7 +14,7 @@ class MerchantRepository {
   // 2. ดึงข้อมูลรายละเอียดร้านค้าเดี่ยวตาม merchant_id
   async findMerchantById(merchantId) {
     return await db('MERCHANTS')
-      .select('id', 'store_name', 'promptpay_id', 'prefix', 'is_open', 'location', 'store_image_url')
+      .select('id', 'store_name', 'category', 'promptpay_id', 'prefix', 'is_open', 'location', 'store_image_url')
       .where('id', merchantId)
       .first();
   }

@@ -2,6 +2,16 @@
 const orderRepo = require('../repositories/orderRepository');
 const { ORDER_STATES, canTransition } = require('../utils/stateMachine');
 
+const listOrders = async (req, res) => {
+  try {
+    const data = await orderRepo.listOrdersForUser(req.user.role, req.user.id);
+    return res.status(200).json({ success: true, data });
+  } catch (error) {
+    console.error('List Orders Error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to load orders' });
+  }
+};
+
 const createOrder = async (req, res) => {
   try {
     // req.user ได้มาจาก verifyToken middleware
@@ -24,7 +34,7 @@ const createOrder = async (req, res) => {
     return res.status(201).json({ success: true, data: newOrder });
   } catch (error) {
     console.error('Create Order Error:', error);
-    return res.status(500).json({ success: false, message: 'Internal Server Error' });
+    return res.status(error.statusCode || 500).json({ success: false, message: error.message || 'สร้างออเดอร์ไม่สำเร็จ' });
   }
 };
 
@@ -157,6 +167,13 @@ const changeOrderStatus = async (req, res) => {
         updated_by: userRole,
         updated_at: new Date()
       });
+      io.to(`merchant_${orderMerchantId}`).emit('ORDER_STATUS_UPDATED', {
+        order_id: Number(order_id),
+        status: nextState,
+        rider_id: effectiveRiderId,
+        updated_by: userRole,
+        updated_at: new Date()
+      });
 
       // หากมีการมอบหมาย Rider ให้แจ้งเตือนไปยัง Rider ห้องส่วนตัวด้วย
       if (nextState === ORDER_STATES.READY_FOR_DELIVERY && effectiveRiderId) {
@@ -177,6 +194,7 @@ const changeOrderStatus = async (req, res) => {
 };
 
 module.exports = {
+  listOrders,
   createOrder,
   changeOrderStatus
 };

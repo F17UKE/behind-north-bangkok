@@ -8,6 +8,8 @@ const { createOrderSchema, changeOrderStatusSchema } = require('../validations/o
 // นำ verifyToken มาใช้กับทุก Route ในไฟล์นี้
 router.use(verifyToken);
 
+router.get('/', orderController.listOrders);
+
 /**
  * @route   POST /api/orders
  * @desc    สร้างออเดอร์ใหม่ (ตรวจสอบโครงสร้างตะกร้าและรายการอาหารด้วย Zod)

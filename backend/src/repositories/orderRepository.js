@@ -1,12 +1,20 @@
 // backend/src/repositories/orderRepository.js
 const knex = require('../db');
 
+const invalidOrder = (message) => Object.assign(new Error(message), { statusCode: 400 });
+
 const createOrder = async (orderData) => {
     const { customerId, merchantId, dormitoryId, roomNumber, items } = orderData;
 
     return await knex.transaction(async (trx) => {
         // 1. Snapshot: ค้นหาค่าส่ง
         const dormitory = await trx('DORMITORIES').where('id', dormitoryId).first();
+        if (!dormitory) throw invalidOrder('ไม่พบหอพักปลายทาง');
+        const merchant = await trx('MERCHANTS')
+            .where({ id: merchantId, is_approved: true, is_open: true })
+            .forUpdate()
+            .first();
+        if (!merchant) throw invalidOrder('ร้านค้านี้ปิดให้บริการหรือยังไม่ได้รับอนุมัติ');
         const deliveryFeeRecord = await trx('DELIVERY_FEES')
             .where({ merchant_id: merchantId, soi_id: dormitory.soi_id })
             .first();
@@ -16,15 +24,6 @@ const createOrder = async (orderData) => {
 
         // 2. จัดการ Running Number ของร้านค้า (คิวออเดอร์) แบบ Row-Level Locking (forUpdate)
         // เพื่อป้องกัน Race Condition เมื่อมีลูกค้ากดสั่งซื้อพร้อมกันหลายคน
-        const merchant = await trx('MERCHANTS')
-            .where('id', merchantId)
-            .forUpdate()
-            .first();
-        
-        if (!merchant) {
-            throw new Error(`Merchant with ID ${merchantId} not found in database.`);
-        }
-
         const newOrderNumber = (merchant.last_order_number || 0) + 1;
 
         // อัปเดตคิวล่าสุดกลับไปที่ตารางร้านค้า
@@ -53,7 +52,10 @@ const createOrder = async (orderData) => {
 
         // 4. วนลูปบันทึก Items และทำ Snapshot ราคา
         for (const item of items) {
-            const menuItem = await trx('MENU_ITEMS').where('id', item.menu_item_id).first();
+            const menuItem = await trx('MENU_ITEMS')
+                .where({ id: item.menu_item_id, merchant_id: merchantId, is_available: true })
+                .first();
+            if (!menuItem) throw invalidOrder(`ไม่พบเมนูที่เปิดขายในร้านนี้ (ID ${item.menu_item_id})`);
             const unitPrice = parseFloat(menuItem.price);
             let itemTotal = unitPrice * item.quantity;
 
@@ -68,6 +70,14 @@ const createOrder = async (orderData) => {
 
             // บันทึก Choices (ถ้ามี)
             if (item.choices && item.choices.length > 0) {
+                const validChoices = await trx('MENU_OPTION_CHOICES as choice')
+                    .join('MENU_OPTION_GROUPS as mog', 'mog.id', 'choice.option_group_id')
+                    .where('mog.menu_item_id', menuItem.id)
+                    .whereIn('choice.id', item.choices)
+                    .select('choice.id');
+                if (validChoices.length !== new Set(item.choices).size) {
+                    throw invalidOrder(`ตัวเลือกเสริมของเมนู ${menuItem.name} ไม่ถูกต้อง`);
+                }
                 for (const choiceId of item.choices) {
                     const choice = await trx('MENU_OPTION_CHOICES').where('id', choiceId).first();
                     const extraPrice = parseFloat(choice.extra_price);
@@ -96,6 +106,47 @@ const getOrderById = async (orderId) => {
     return await knex('ORDERS').where('id', orderId).first();
 };
 
+const listOrdersForUser = async (role, userId) => {
+    const query = knex('ORDERS as o')
+        .leftJoin('MERCHANTS as m', 'm.id', 'o.merchant_id')
+        .leftJoin('CUSTOMERS as c', 'c.id', 'o.customer_id')
+        .select(
+            'o.*',
+            'm.store_name',
+            'm.store_image_url',
+            'c.username as customer_username',
+            'c.phone as customer_phone'
+        )
+        .orderBy('o.created_at', 'desc');
+
+    if (role === 'CUSTOMER') query.where('o.customer_id', userId);
+    else if (role === 'MERCHANT') query.where('o.merchant_id', userId);
+    else if (role === 'RIDER') query.where('o.rider_id', userId);
+    else if (role !== 'ADMIN') return [];
+
+    const orders = await query;
+    if (!orders.length) return [];
+
+    const orderIds = orders.map((order) => order.id);
+    const items = await knex('ORDER_ITEMS as oi')
+        .leftJoin('MENU_ITEMS as mi', 'mi.id', 'oi.menu_item_id')
+        .select('oi.*', 'mi.name as menu_name')
+        .whereIn('oi.order_id', orderIds)
+        .orderBy('oi.id', 'asc');
+    const itemIds = items.map((item) => item.id);
+    const choices = itemIds.length
+        ? await knex('ORDER_ITEM_CHOICES').whereIn('order_item_id', itemIds).orderBy('id', 'asc')
+        : [];
+
+    return orders.map((order) => ({
+        ...order,
+        items: items.filter((item) => item.order_id === order.id).map((item) => ({
+            ...item,
+            choices: choices.filter((choice) => choice.order_item_id === item.id),
+        })),
+    }));
+};
+
 const updateOrderStatus = async (orderId, newStatus, riderId = null) => {
     const updateData = { status: newStatus };
     
@@ -113,5 +164,6 @@ const updateOrderStatus = async (orderId, newStatus, riderId = null) => {
 module.exports = {
     createOrder,
     getOrderById,
+    listOrdersForUser,
     updateOrderStatus
 };

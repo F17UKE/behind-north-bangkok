@@ -9,6 +9,8 @@ const checkRole = require('../middlewares/checkRole');
 router.use(verifyToken);
 router.use(checkRole('ADMIN'));
 
+router.get('/users', adminController.getUsers);
+
 // 1. ดึงรายการร้านค้าที่รอการอนุมัติ
 router.get('/merchants/pending', adminController.getPendingMerchants);
 

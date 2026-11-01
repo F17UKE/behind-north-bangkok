@@ -12,6 +12,7 @@ const {
     createOptionChoiceSchema,
     deliveryFeeSchema
 } = require('../validations/menuValidation');
+const { merchantPasswordChangeSchema } = require('../validations/authValidation');
 
 // เรียกใช้ Middleware ทุก Route ในไฟล์นี้
 router.use(verifyToken);
@@ -21,8 +22,10 @@ router.use(checkRole('MERCHANT'));
 router.get('/profile', controller.getProfile);
 router.put('/profile', controller.updateProfile);
 router.patch('/status', controller.updateStatus);
+router.patch('/password', validate(merchantPasswordChangeSchema), controller.changePassword);
 
 // 2. Menu Management
+router.get('/menus', controller.getMenus);
 router.post('/menus', validate(createMenuSchema), controller.createMenu);
 router.patch('/menus/:menu_id/availability', validate(updateMenuAvailabilitySchema), controller.updateMenuAvailability);
 router.put('/menus/:menu_id', validate(updateMenuSchema), controller.updateMenu);

@@ -62,12 +62,14 @@ const completeSingleItem = async (req, res) => {
         const io = req.app.get('io');
         if (io) {
             if (statusChanged) {
-                io.to(`order_${orderId}`).emit('ORDER_STATUS_UPDATED', {
+                const statusUpdate = {
                     order_id: Number(orderId),
                     status: 'READY_FOR_DELIVERY',
                     updated_by: 'MERCHANT',
                     updated_at: new Date()
-                });
+                };
+                io.to(`order_${orderId}`).emit('ORDER_STATUS_UPDATED', statusUpdate);
+                io.to(`merchant_${merchantId}`).emit('ORDER_STATUS_UPDATED', statusUpdate);
             }
             // แจ้งให้หน้า KDS อัปเดตเครื่องหมายเสร็จของจานอาหาร
             io.to(`merchant_${merchantId}_kds`).emit('KDS_ITEM_COMPLETED', {
@@ -120,12 +122,14 @@ const completeEntireOrder = async (req, res) => {
         // ยิง Socket.io อัปเดตสถานะไปที่ลูกค้า และ KDS
         const io = req.app.get('io');
         if (io) {
-            io.to(`order_${orderId}`).emit('ORDER_STATUS_UPDATED', {
+            const statusUpdate = {
                 order_id: Number(orderId),
                 status: 'READY_FOR_DELIVERY',
                 updated_by: 'MERCHANT',
                 updated_at: new Date()
-            });
+            };
+            io.to(`order_${orderId}`).emit('ORDER_STATUS_UPDATED', statusUpdate);
+            io.to(`merchant_${merchantId}`).emit('ORDER_STATUS_UPDATED', statusUpdate);
             io.to(`merchant_${merchantId}_kds`).emit('KDS_ORDER_COMPLETED', {
                 order_id: Number(orderId),
                 status: 'READY_FOR_DELIVERY'

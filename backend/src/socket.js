@@ -25,6 +25,11 @@ module.exports = (io) => {
     io.on('connection', (socket) => {
         console.log(`✅ Socket connected: ${socket.id} (User: ${socket.user ? socket.user.role + '_' + socket.user.id : 'Anonymous'})`);
 
+        // ร้านค้าเข้าห้องส่วนตัวจาก JWT เพื่อรับ event ออเดอร์ใหม่ของร้านตัวเอง
+        if (socket.user?.role === 'MERCHANT' && socket.user.id) {
+            socket.join(`merchant_${socket.user.id}`);
+        }
+
         // 2. รับคำสั่งเข้าห้องออเดอร์ พร้อมตรวจสอบสิทธิ์ (Room Authorization)
         socket.on('join_order_room', async (data) => {
             const id = typeof data === 'object' ? (data.orderId || data.order_id) : data;
