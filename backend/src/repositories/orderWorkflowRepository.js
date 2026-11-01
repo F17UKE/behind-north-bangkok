@@ -102,7 +102,7 @@ class OrderWorkflowRepository {
         'MERCHANT_RIDERS.phone as rider_phone'
       )
       .where('ORDERS.customer_id', customerId)
-      .orderBy('ORDERS.created_at', 'desc');
+      .orderBy('ORDERS.created_at', 'asc'); // มาก่อนอยู่บน (FIFO)
 
     return await this._attachItemsToOrders(orders);
   }
@@ -124,7 +124,7 @@ class OrderWorkflowRepository {
         'MERCHANT_RIDERS.phone as rider_phone'
       )
       .where('ORDERS.merchant_id', merchantId)
-      .orderBy('ORDERS.created_at', 'desc');
+      .orderBy('ORDERS.created_at', 'asc'); // มาก่อนอยู่บน (FIFO)
 
     return await this._attachItemsToOrders(orders);
   }

@@ -7,9 +7,11 @@ class KDSRepository {
         return await knex('ORDERS')
             .select(
                 'ORDERS.id', 'ORDERS.order_code', 'ORDERS.status', 'ORDERS.created_at',
-                'ORDERS.delivery_room_number', 'CUSTOMERS.username as customer_name'
+                'ORDERS.delivery_room_number', 'CUSTOMERS.username as customer_name',
+                'DORMITORIES.name as dormitory_name'
             )
             .join('CUSTOMERS', 'ORDERS.customer_id', 'CUSTOMERS.id')
+            .leftJoin('DORMITORIES', 'ORDERS.delivery_dormitory_id', 'DORMITORIES.id')
             .where({
                 'ORDERS.merchant_id': merchantId,
                 'ORDERS.status': 'PREPARING'

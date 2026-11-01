@@ -8,6 +8,7 @@ import { merchantApi } from "../../api/merchantApi";
 import { authApi } from "../../api/authApi";
 import { getSocket, playOrderChime } from "../../api/socketClient";
 import MerchantLogin from "./MerchantLogin";
+import MerchantKDS from "./MerchantKDS";
 
 export default function MerchantPage() {
   const [screen, setScreen] = useState("home");
@@ -174,14 +175,17 @@ export default function MerchantPage() {
     }
   }
 
-  const filteredOrders = useMemo(() => orders.filter((o) => {
-    const q = `${o.id} ${o.customer}`.toLowerCase();
-    if (!q.includes(query.toLowerCase())) return false;
-    if (orderFilter === "pending") return ["PENDING_ACCEPT", "PENDING_PAYMENT", "PAID"].includes(o.status);
-    if (orderFilter === "preparing") return o.status === "PREPARING";
-    if (orderFilter === "done") return ["READY_FOR_DELIVERY", "COMPLETED"].includes(o.status);
-    return true;
-  }), [orders, orderFilter, query]);
+  const filteredOrders = useMemo(() => orders
+    .filter((o) => {
+      const q = `${o.id} ${o.customer}`.toLowerCase();
+      if (!q.includes(query.toLowerCase())) return false;
+      if (orderFilter === "pending") return ["PENDING_ACCEPT", "PENDING_PAYMENT"].includes(o.status);
+      if (orderFilter === "preparing") return o.status === "PREPARING";
+      if (orderFilter === "done") return ["READY_FOR_DELIVERY", "IN_DELIVERY", "COMPLETED"].includes(o.status);
+      return true;
+    })
+    .sort((a, b) => Number(a.rawId || 0) - Number(b.rawId || 0)), // มาก่อนอยู่บน (FIFO)
+  [orders, orderFilter, query]);
 
   async function updateOrder(id, status) {
     const target = orders.find(o => o.id === id);
@@ -346,6 +350,9 @@ export default function MerchantPage() {
             onLogout={handleLogout}
           />
         )}
+        {screen === "kds" && (
+          <MerchantKDS onBack={() => setScreen("orders")} />
+        )}
         {screen === "menus" && (
           <MerchantMenus
             merchant={currentMerchant}
@@ -386,8 +393,9 @@ export default function MerchantPage() {
           onChange={(key) => setScreen(key)} 
           items={[
             { key: "home", label: "หน้าหลัก", icon: "⌂" },
-            { key: "orders", label: `ออเดอร์ (${orders.filter(o => ["PENDING_ACCEPT", "PENDING_PAYMENT", "PAID"].includes(o.status)).length})`, icon: "▣" },
-            { key: "menus", label: "เมนูอาหาร", icon: "🍲" },
+            { key: "orders", label: `ออเดอร์ (${orders.filter(o => ["PENDING_ACCEPT", "PENDING_PAYMENT"].includes(o.status)).length})`, icon: "▣" },
+            { key: "kds", label: `จอครัว (${orders.filter(o => o.status === "PREPARING").length})`, icon: "🍳" },
+            { key: "menus", label: "เมนู", icon: "🍲" },
             { key: "delivery", label: "จัดส่ง", icon: "🛵" },
             { key: "chat", label: unreadChatCount > 0 ? `แชท (${unreadChatCount})` : "แชท", icon: "💬" }
           ]} 
@@ -467,10 +475,12 @@ function MerchantHome({ orders, go, query, setQuery, merchant, onLogout }) {
       <SearchBar value={query} onChange={setQuery} placeholder="ค้นหาเลขออเดอร์ หรือชื่อลูกค้า..." />
       
       <div className="merchant-quick">
-        <button onClick={() => go("menus")} style={{ background: "#ecfdf5", color: "#065f46", borderColor: "#a7f3d0" }}>🍲 จัดการเมนู (＋เพิ่ม)</button>
+        <button onClick={() => go("kds")} style={{ background: "#fff7ed", color: "#c2410c", borderColor: "#fed7aa", fontWeight: 700 }}>
+          🍳 จอครัว KDS <span>{orders.filter(o => o.status === "PREPARING").length}</span>
+        </button>
         <button onClick={() => go("orders")}>ทั้งหมด ({orders.length})</button>
-        <button onClick={() => go("orders")}>รอรับ <span>{orders.filter(o => ["PENDING_ACCEPT", "PAID"].includes(o.status)).length}</span></button>
-        <button onClick={() => go("orders")}>กำลังทำ <span>{orders.filter(o => o.status === "PREPARING").length}</span></button>
+        <button onClick={() => go("orders")}>รอรับ <span>{orders.filter(o => ["PENDING_ACCEPT", "PENDING_PAYMENT"].includes(o.status)).length}</span></button>
+        <button onClick={() => go("menus")} style={{ background: "#ecfdf5", color: "#065f46", borderColor: "#a7f3d0" }}>🍲 จัดการเมนู</button>
       </div>
 
       <div className="merchant-stats">
@@ -498,7 +508,7 @@ function MerchantHome({ orders, go, query, setQuery, merchant, onLogout }) {
           <small>ระบบจะส่งเสียงกระดิ่งเตือนและอัปเดตอัตโนมัติทันทีเมื่อมีลูกค้าสั่งอาหาร</small>
         </div>
       ) : (
-        orders.slice(0, 5).map((o) => (
+        [...orders].sort((a, b) => Number(a.rawId || 0) - Number(b.rawId || 0)).slice(0, 5).map((o) => (
           <button className="merchant-recent" key={o.id} onClick={() => go("orders")}>
             <div className="food-thumb">🍛</div>
             <div>

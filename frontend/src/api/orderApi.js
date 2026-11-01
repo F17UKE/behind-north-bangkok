@@ -92,7 +92,14 @@ export const orderApi = {
   // KDS: ดึงออเดอร์ในครัว
   async getKitchenOrders() {
     const res = await api.get("/merchants/kds/orders", {}, "MERCHANT");
+    if (Array.isArray(res)) return res;
     return res?.orders || res?.data || [];
+  },
+
+  // KDS: ติ๊กเสร็จรายจาน (Item-level)
+  async completeKitchenItem(orderId, itemId) {
+    const res = await api.put(`/merchants/kds/orders/${orderId}/items/${itemId}/complete`, {}, {}, "MERCHANT");
+    return res?.data || res;
   },
 
   // KDS: ติ๊กเสร็จทั้งบิล (พร้อมจัดส่ง)

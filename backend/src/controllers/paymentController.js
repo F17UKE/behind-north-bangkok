@@ -104,19 +104,19 @@ const uploadAndVerifySlip = async (req, res) => {
             // 3. ถ้าสลิปถูกต้อง บันทึกข้อมูลลงตาราง PAYMENT_SLIPS
             await paymentRepository.saveSlip(order_id, finalImageUrl, verificationResult.refNumber, trx);
 
-            // 4. เปลี่ยนสถานะออเดอร์เป็น PAID
-            await paymentRepository.updateOrderStatus(order_id, 'PAID', trx);
+            // 4. เปลี่ยนสถานะออเดอร์เป็น PREPARING (ร้านค้ารับเงินแล้ว เริ่มทำอาหารทันทีโดยไม่ต้องกดยืนยันซ้ำ)
+            await paymentRepository.updateOrderStatus(order_id, 'PREPARING', trx);
 
             // ยืนยันการเปลี่ยนแปลงข้อมูล
             await trx.commit();
 
-            // 5. ส่งสัญญาณ Socket.io แจ้งเตือนร้านค้าและลูกค้าว่าชำระเงินเรียบร้อยแล้ว
+            // 5. ส่งสัญญาณ Socket.io แจ้งเตือนร้านค้าและลูกค้าว่าสถานะออเดอร์เปลี่ยนเป็น PREPARING (กำลังเตรียมอาหาร)
             const io = req.app.get('io');
             if (io) {
                 const payload = {
                     order_id: Number(orderInfo.order_id || order_id),
                     order_code: orderInfo.order_code,
-                    status: 'PAID',
+                    status: 'PREPARING',
                     updated_by: 'CUSTOMER',
                     updated_at: new Date()
                 };
@@ -134,8 +134,8 @@ const uploadAndVerifySlip = async (req, res) => {
             
             return res.status(200).json({ 
                 success: true,
-                message: 'Payment verified successfully (Mock Mode)',
-                status: 'PAID',
+                message: 'Payment verified and status updated to PREPARING',
+                status: 'PREPARING',
                 imageUrl: finalImageUrl,
                 refNumber: verificationResult.refNumber
             });

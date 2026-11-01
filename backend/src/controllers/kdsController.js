@@ -62,12 +62,22 @@ const completeSingleItem = async (req, res) => {
         const io = req.app.get('io');
         if (io) {
             if (statusChanged) {
-                io.to(`order_${orderId}`).emit('ORDER_STATUS_UPDATED', {
+                const payload = {
                     order_id: Number(orderId),
+                    order_code: order.order_code,
                     status: 'READY_FOR_DELIVERY',
                     updated_by: 'MERCHANT',
                     updated_at: new Date()
-                });
+                };
+                io.to(`order_${orderId}`).emit('ORDER_STATUS_UPDATED', payload);
+                if (order.merchant_id) {
+                    io.to(`merchant_${order.merchant_id}`).emit('ORDER_STATUS_UPDATED', payload);
+                    io.to(`merchant_${order.merchant_id}_kds}`).emit('ORDER_STATUS_UPDATED', payload);
+                }
+                if (order.customer_id) {
+                    io.to(`customer_${order.customer_id}`).emit('ORDER_STATUS_UPDATED', payload);
+                }
+                io.emit('ORDER_STATUS_UPDATED', payload);
             }
             // แจ้งให้หน้า KDS อัปเดตเครื่องหมายเสร็จของจานอาหาร
             io.to(`merchant_${merchantId}_kds`).emit('KDS_ITEM_COMPLETED', {
@@ -120,12 +130,22 @@ const completeEntireOrder = async (req, res) => {
         // ยิง Socket.io อัปเดตสถานะไปที่ลูกค้า และ KDS
         const io = req.app.get('io');
         if (io) {
-            io.to(`order_${orderId}`).emit('ORDER_STATUS_UPDATED', {
+            const payload = {
                 order_id: Number(orderId),
+                order_code: order.order_code,
                 status: 'READY_FOR_DELIVERY',
                 updated_by: 'MERCHANT',
                 updated_at: new Date()
-            });
+            };
+            io.to(`order_${orderId}`).emit('ORDER_STATUS_UPDATED', payload);
+            if (order.merchant_id) {
+                io.to(`merchant_${order.merchant_id}`).emit('ORDER_STATUS_UPDATED', payload);
+                io.to(`merchant_${order.merchant_id}_kds}`).emit('ORDER_STATUS_UPDATED', payload);
+            }
+            if (order.customer_id) {
+                io.to(`customer_${order.customer_id}`).emit('ORDER_STATUS_UPDATED', payload);
+            }
+            io.emit('ORDER_STATUS_UPDATED', payload);
             io.to(`merchant_${merchantId}_kds`).emit('KDS_ORDER_COMPLETED', {
                 order_id: Number(orderId),
                 status: 'READY_FOR_DELIVERY'

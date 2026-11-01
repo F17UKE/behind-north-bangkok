@@ -502,18 +502,29 @@ export default function CustomerPage() {
       const orderId = Number(payload.order_id || payload.orderId);
       console.log("⚡ [Customer Socket] ORDER_STATUS_UPDATED:", payload);
 
+      const displayCode = payload.order_code 
+        ? (payload.order_code.startsWith("#") ? payload.order_code : `#${payload.order_code}`)
+        : (orderId ? `#ORD${String(orderId).padStart(3, "0")}` : "");
+
       if (payload.status === "PENDING_PAYMENT") {
         playOrderChime();
-        setApiNotice("🔔 ร้านค้ารับออเดอร์แล้ว! กรุณาสแกน QR เพื่อชำระเงิน");
+        setApiNotice(`🔔 ออเดอร์ ${displayCode}: ร้านค้ารับแล้ว! กรุณาสแกน QR ชำระเงิน`);
       } else if (payload.status === "REJECTED_BY_MERCHANT") {
-        setApiNotice("⚠️ ขออภัย ร้านค้าปฏิเสธออเดอร์นี้");
+        setApiNotice(`❌ ออเดอร์ ${displayCode}: ขออภัย ร้านค้าปฏิเสธคำสั่งซื้อ`);
+      } else if (payload.status === "PREPARING") {
+        playOrderChime();
+        setApiNotice(`🍳 ออเดอร์ ${displayCode}: ชำระเงินสำเร็จ ร้านค้ากำลังปรุงอาหาร`);
       } else if (payload.status === "READY_FOR_DELIVERY") {
-        setApiNotice("🍲 อาหารปรุงเสร็จแล้ว กำลังรอจัดส่ง");
+        playOrderChime();
+        setApiNotice(`🍲 ออเดอร์ ${displayCode}: อาหารปรุงเสร็จแล้ว กำลังรอจัดส่ง`);
       } else if (payload.status === "IN_DELIVERY") {
-        setApiNotice("🛵 ไรเดอร์กำลังนำส่งอาหาร");
+        playOrderChime();
+        setApiNotice(`🛵 ออเดอร์ ${displayCode}: ไรเดอร์กำลังนำส่งอาหารไปยังหอพัก`);
       } else if (payload.status === "COMPLETED") {
-        setApiNotice("🎉 จัดส่งอาหารสำเร็จเรียบร้อยแล้ว!");
+        playOrderChime();
+        setApiNotice(`🎉 ออเดอร์ ${displayCode}: จัดส่งอาหารสำเร็จ อร่อยกับมื้อนี้นะครับ!`);
       }
+      setTimeout(() => setApiNotice(""), 6000);
 
       setOrders(current => current.map(o => {
         if (o.rawId === orderId || o.id === `#ORD${String(orderId).padStart(3, "0")}`) {
@@ -606,11 +617,12 @@ export default function CustomerPage() {
         res = await orderApi.verifySlip(orderId, { simulated: true, amount: order.total });
       }
 
-      setApiNotice("✅ ตรวจสอบสลิปสำเร็จ! สถานะ: ชำระเงินแล้ว");
-      const updatedOrder = { ...order, status: "PAID" };
+      const orderCode = order.order_code || order.id || "";
+      setApiNotice(`✅ ออเดอร์ ${orderCode}: แนบสลิปสำเร็จ! ร้านค้าเริ่มเตรียมอาหารทันที`);
+      const updatedOrder = { ...order, status: "PREPARING" };
       setSelectedOrder(updatedOrder);
       setOrders(current => current.map(o => (o.id === order.id || o.rawId === order.rawId ? updatedOrder : o)));
-      setTimeout(() => setApiNotice(""), 3500);
+      setTimeout(() => setApiNotice(""), 5500);
     } catch (err) {
       alert("การตรวจสอบสลิปล้มเหลว: " + (err?.response?.data?.message || err.message));
     }
@@ -649,7 +661,60 @@ export default function CustomerPage() {
   return (
     <MobileShell>
       <div key={screen} className="mobile-page customer-page-shell screen-enter">
-        {apiNotice && <div className="api-toast-notice">{apiNotice}</div>}
+        {apiNotice && (
+          <aside
+            role="status"
+            aria-live="polite"
+            style={{
+              position: "fixed",
+              top: "16px",
+              left: "50%",
+              transform: "translateX(-50%)",
+              zIndex: 99999,
+              background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
+              color: "#ffffff",
+              padding: "10px 18px",
+              borderRadius: "50px",
+              fontSize: "13px",
+              fontWeight: 600,
+              boxShadow: "0 12px 30px -4px rgba(0, 0, 0, 0.45), 0 4px 12px -2px rgba(0, 0, 0, 0.25)",
+              border: "1.5px solid rgba(255, 255, 255, 0.18)",
+              backdropFilter: "blur(12px)",
+              display: "flex",
+              alignItems: "center",
+              gap: "10px",
+              maxWidth: "92vw",
+              boxSizing: "border-box"
+            }}
+          >
+            <span style={{ fontSize: "16px" }}>⚡</span>
+            <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {apiNotice}
+            </span>
+            <button
+              type="button"
+              onClick={() => setApiNotice("")}
+              style={{
+                background: "rgba(255, 255, 255, 0.2)",
+                border: "none",
+                color: "#ffffff",
+                width: "22px",
+                height: "22px",
+                borderRadius: "50%",
+                cursor: "pointer",
+                fontSize: "12px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: 0,
+                lineHeight: 1
+              }}
+              aria-label="ปิดการแจ้งเตือน"
+            >
+              ✕
+            </button>
+          </aside>
+        )}
 
         {screen === "home" && <CustomerHome search={search} setSearch={setSearch} category={category} setCategory={setCategory} foods={filtered} menu={defaultMenuGallery} featured={heroMenuGallery[heroIndex] || defaultMenuGallery[0]} heroIndex={heroIndex} setHeroIndex={setHeroIndex} heroCount={heroMenuGallery.length || 1} cartCount={cartCount} currentDorm={currentDorm} onOpenDormPicker={() => setShowDormPicker(true)} onStore={openStore} onCart={() => setScreen("basket")} onOrders={() => setScreen("recent")} onProfile={() => setScreen("profile")} />}
         {screen === "store" && <CustomerStore store={selectedStore} cartCount={cartCount} onBack={() => setScreen("home")} onCustomize={openCustomization} onBasket={() => setScreen("basket")} />}
