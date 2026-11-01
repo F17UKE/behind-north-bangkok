@@ -35,7 +35,8 @@ export default function CustomerPage() {
   const [orders, setOrders] = useState(initialOrders);
   const [selectedOrder, setSelectedOrder] = useState(initialOrders[0]);
   const [savedPlace, setSavedPlace] = useState(false);
-  const [profile, setProfile] = useState({ name: "นักศึกษา มจพ.", phone: "081-555-2222", isGuest: true });
+  const [savedAddress, setSavedAddress] = useState(null);
+  const [profile, setProfile] = useState({ name: "", phone: "", email: "", isGuest: true });
   const [chatText, setChatText] = useState("");
   const [customItem, setCustomItem] = useState(null);
   const [customAddons, setCustomAddons] = useState([]);
@@ -52,21 +53,48 @@ export default function CustomerPage() {
 
   const [pendingReturnScreen, setPendingReturnScreen] = useState(null);
 
-  // 1. ตรวจสอบการล็อกอินและโหลดข้อมูลร้านค้าจาก Backend API เมื่อเปิดหน้า
+  // 1. ตรวจสอบการล็อกอินและโหลดข้อมูลที่อยู่ / ร้านค้าเมื่อเปิดหน้า
   useEffect(() => {
     const savedUser = authApi.getCurrentUser("CUSTOMER");
     if (savedUser) {
       setProfile({
         name: savedUser.username || savedUser.name || "ผู้ใช้งาน",
-        phone: savedUser.phone || "08X-XXX-XXXX",
+        phone: savedUser.phone || "081-234-5678",
+        email: savedUser.email || "student@kmutnb.ac.th",
         isGuest: false
       });
       loadCustomerOrders();
+    } else {
+      setProfile({
+        name: "",
+        phone: "",
+        email: "",
+        isGuest: true
+      });
+    }
+
+    // โหลดที่อยู่ที่เคยบันทึกไว้ใน LocalStorage
+    try {
+      const storedAddr = localStorage.getItem("behind_customer_address");
+      if (storedAddr) {
+        const parsed = JSON.parse(storedAddr);
+        if (parsed?.dormitory && parsed?.roomNumber) {
+          setSavedAddress(parsed);
+          setSavedPlace(true);
+          if (parsed.dormitory) setCurrentDorm(parsed.dormitory);
+        }
+      }
+    } catch (e) {
+      console.log("Could not load stored address:", e);
     }
 
     // โหลดร้านค้าจริงจาก Backend API
     loadMerchants();
   }, []);
+
+  function hasDeliveryAddress() {
+    return Boolean(savedAddress && savedAddress.dormitory && savedAddress.roomNumber && savedAddress.roomNumber.trim());
+  }
 
   async function loadMerchants() {
     try {
@@ -236,7 +264,7 @@ export default function CustomerPage() {
 
   // ส่งออเดอร์ไปยัง Backend API
   async function placeOrder() {
-    // ตรวจสอบว่าเข้าสู่ระบบแล้วหรือยัง ถ้ายังให้พาไปหน้า Login ทันที
+    // 1. ตรวจสอบว่าเข้าสู่ระบบแล้วหรือยัง ถ้ายังให้พาไปหน้า Login ทันที
     if (!authApi.isLoggedIn("CUSTOMER")) {
       setApiNotice("🔒 กรุณาเข้าสู่ระบบก่อนทำการสั่งซื้ออาหาร");
       setPendingReturnScreen("place");
@@ -244,8 +272,18 @@ export default function CustomerPage() {
       return;
     }
 
+    // 2. ตรวจสอบว่าได้ระบุที่อยู่จัดส่งในโปรไฟล์แล้วหรือยัง
+    if (!hasDeliveryAddress()) {
+      setApiNotice("📍 กรุณาระบุที่อยู่จัดส่ง (เลือกหอพักและระบุเลขห้อง) ในโปรไฟล์ก่อนทำการสั่งซื้อ");
+      setPendingReturnScreen("place");
+      setScreen("save-place");
+      return;
+    }
+
     const itemsDescription = cart.map((x) => `${x.name}${x.selectedAddons?.length ? ` (${x.selectedAddons.map((option) => option.name).join(", ")})` : ""}${x.note ? ` · หมายเหตุ: ${x.note}` : ""} x${x.qty}`);
-    
+    const dorm = savedAddress.dormitory || currentDorm;
+    const room = savedAddress.roomNumber.trim();
+
     // เตรียม Local Order สำรอง
     let newOrder = {
       id: `#ORD${String(orders.length + 2).padStart(3, "0")}`,
@@ -254,7 +292,8 @@ export default function CustomerPage() {
       total,
       status: "PENDING_PAYMENT",
       date: "Today, now",
-      qrImage: null
+      qrImage: null,
+      deliveryAddress: `${dorm.name} ห้อง ${room} (${dorm.soi})`
     };
 
     try {
@@ -262,8 +301,11 @@ export default function CustomerPage() {
       if (authApi.isLoggedIn("CUSTOMER")) {
         const orderPayload = {
           merchant_id: Number(selectedStore.id) || 1,
-          dormitory_id: currentDorm?.id || 1,
-          room_number: `ห้อง 101 (${currentDorm?.name || "หอพัก"})`,
+          merchantId: Number(selectedStore.id) || 1,
+          dormitory_id: Number(dorm.id) || 1,
+          dormitoryId: Number(dorm.id) || 1,
+          room_number: `ห้อง ${room} (${dorm.name})`,
+          roomNumber: `ห้อง ${room} (${dorm.name})`,
           items: cart.map(item => ({
             menu_item_id: Number(item.id) || 1,
             quantity: Number(item.qty) || 1,
@@ -350,16 +392,28 @@ export default function CustomerPage() {
             total={total}
             changeQty={changeQty}
             isLoggedIn={authApi.isLoggedIn("CUSTOMER")}
+            hasAddress={hasDeliveryAddress()}
+            savedAddress={savedAddress}
             onRequireLogin={() => {
               setPendingReturnScreen("basket");
               setScreen("login");
+            }}
+            onRequireAddress={() => {
+              setPendingReturnScreen("basket");
+              setScreen("save-place");
             }}
             onBack={() => setScreen("store")}
             onNext={() => {
               if (!authApi.isLoggedIn("CUSTOMER")) {
                 setApiNotice("🔒 กรุณาเข้าสู่ระบบก่อนดำเนินการสั่งซื้ออาหาร");
-                setPendingReturnScreen("update");
+                setPendingReturnScreen("basket");
                 setScreen("login");
+                return;
+              }
+              if (!hasDeliveryAddress()) {
+                setApiNotice("📍 กรุณาระบุที่อยู่จัดส่งในโปรไฟล์ก่อนสั่งอาหาร");
+                setPendingReturnScreen("update");
+                setScreen("save-place");
                 return;
               }
               setScreen("update");
@@ -374,9 +428,15 @@ export default function CustomerPage() {
             setSavedPlace={setSavedPlace}
             changeQty={changeQty}
             isLoggedIn={authApi.isLoggedIn("CUSTOMER")}
+            hasAddress={hasDeliveryAddress()}
+            savedAddress={savedAddress}
             onRequireLogin={() => {
               setPendingReturnScreen("update");
               setScreen("login");
+            }}
+            onRequireAddress={() => {
+              setPendingReturnScreen("update");
+              setScreen("save-place");
             }}
             onBack={() => setScreen("basket")}
             onNext={() => {
@@ -384,6 +444,12 @@ export default function CustomerPage() {
                 setApiNotice("🔒 กรุณาเข้าสู่ระบบก่อนดำเนินการสั่งซื้ออาหาร");
                 setPendingReturnScreen("place");
                 setScreen("login");
+                return;
+              }
+              if (!hasDeliveryAddress()) {
+                setApiNotice("📍 กรุณาระบุที่อยู่จัดส่งในโปรไฟล์ก่อนสั่งอาหาร");
+                setPendingReturnScreen("place");
+                setScreen("save-place");
                 return;
               }
               setScreen("place");
@@ -397,9 +463,15 @@ export default function CustomerPage() {
             deliveryFee={deliveryFee}
             total={total}
             isLoggedIn={authApi.isLoggedIn("CUSTOMER")}
+            hasAddress={hasDeliveryAddress()}
+            savedAddress={savedAddress}
             onRequireLogin={() => {
               setPendingReturnScreen("place");
               setScreen("login");
+            }}
+            onRequireAddress={() => {
+              setPendingReturnScreen("place");
+              setScreen("save-place");
             }}
             onBack={() => setScreen("update")}
             onPlace={placeOrder}
@@ -407,8 +479,67 @@ export default function CustomerPage() {
         )}
         {screen === "recent" && <Recent orders={orders} onOpen={(order) => { setSelectedOrder(order); setScreen("delivery"); }} onHome={() => setScreen("home")} />}
         {screen === "delivery" && <Delivery order={selectedOrder} onBack={() => setScreen("recent")} onChat={() => setScreen("chat")} onVerifySlip={() => verifySlip(selectedOrder)} />}
-        {screen === "profile" && <Profile profile={profile} savedPlace={savedPlace} onBack={() => setScreen("home")} onSave={() => setScreen("save-place")} onLogin={() => setScreen("login")} onLogout={() => { authApi.logout("CUSTOMER"); setProfile({ name: "นักศึกษา มจพ.", phone: "081-555-2222", isGuest: true }); }} onUpdateProfile={setProfile} />}
-        {screen === "save-place" && <SavePlace saved={savedPlace} onBack={() => setScreen("profile")} onSave={() => { setSavedPlace(true); setScreen("profile"); }} />}
+        {screen === "profile" && (
+          <Profile
+            profile={profile}
+            savedAddress={savedAddress}
+            onBack={() => setScreen("home")}
+            onManageAddress={() => {
+              if (profile.isGuest) {
+                setApiNotice("🔒 กรุณาเข้าสู่ระบบก่อนเพื่อจัดการที่อยู่จัดส่ง");
+                setPendingReturnScreen("profile");
+                setScreen("login");
+                return;
+              }
+              setPendingReturnScreen("profile");
+              setScreen("save-place");
+            }}
+            onOrders={() => setScreen("recent")}
+            onLogin={() => setScreen("login")}
+            onLogout={() => {
+              authApi.logout("CUSTOMER");
+              setProfile({ name: "", phone: "", email: "", isGuest: true });
+              setApiNotice("ออกจากระบบเรียบร้อยแล้ว");
+              setTimeout(() => setApiNotice(""), 2500);
+            }}
+          />
+        )}
+        {screen === "save-place" && (
+          <SavePlace
+            initialAddress={savedAddress}
+            currentDorm={currentDorm}
+            userPhone={profile.phone}
+            onBack={() => {
+              if (pendingReturnScreen) {
+                const target = pendingReturnScreen;
+                setPendingReturnScreen(null);
+                setScreen(target);
+              } else {
+                setScreen("profile");
+              }
+            }}
+            onSave={(addr) => {
+              setSavedAddress(addr);
+              setSavedPlace(true);
+              if (addr.dormitory) setCurrentDorm(addr.dormitory);
+              if (addr.phone && !profile.phone) {
+                setProfile(prev => ({ ...prev, phone: addr.phone }));
+              }
+              try {
+                localStorage.setItem("behind_customer_address", JSON.stringify(addr));
+              } catch (e) {}
+              setApiNotice("✅ บันทึกที่อยู่จัดส่งเรียบร้อยแล้ว!");
+              setTimeout(() => setApiNotice(""), 3000);
+              if (pendingReturnScreen) {
+                const target = pendingReturnScreen;
+                setPendingReturnScreen(null);
+                setScreen(target);
+              } else {
+                setScreen("profile");
+              }
+            }}
+          />
+        )}
         {screen === "chat" && <CustomerChat storeName={selectedOrder?.store} messages={chatMessages} value={chatText} setValue={setChatText} onSend={sendChat} onBack={() => setScreen("delivery")} />}
         {screen === "login" && (
           <CustomerAuth
@@ -424,7 +555,12 @@ export default function CustomerPage() {
               }
             }}
             onSuccess={(user) => {
-              setProfile({ name: user.username, phone: user.phone || "08X-XXX-XXXX", isGuest: false });
+              setProfile({
+                name: user.username,
+                phone: user.phone || "081-234-5678",
+                email: user.email || "student@kmutnb.ac.th",
+                isGuest: false
+              });
               loadCustomerOrders();
               if (pendingReturnScreen) {
                 const target = pendingReturnScreen;
@@ -451,7 +587,12 @@ export default function CustomerPage() {
               }
             }}
             onSuccess={(user) => {
-              setProfile({ name: user.username, phone: user.phone || "08X-XXX-XXXX", isGuest: false });
+              setProfile({
+                name: user.username,
+                phone: user.phone || "081-234-5678",
+                email: user.email || "student@kmutnb.ac.th",
+                isGuest: false
+              });
               if (pendingReturnScreen) {
                 const target = pendingReturnScreen;
                 setPendingReturnScreen(null);
@@ -465,9 +606,9 @@ export default function CustomerPage() {
         )}
       </div>
       <BottomNav tone="orange" active={screen === "profile" ? "profile" : ["recent", "delivery"].includes(screen) ? "order" : "home"} onChange={nav} items={[{ key: "home", label: "หน้าแรก", icon: "⌂" }, { key: "order", label: "ออเดอร์", icon: "▣" }, { key: "profile", label: "โปรไฟล์", icon: "♙" }, { key: "cart", label: cartCount ? `ตะกร้า (${cartCount})` : "ตะกร้า", icon: "🛒" }]} />
-      {!["login", "signup"].includes(screen) && (
+      {!["login", "signup", "profile", "save-place"].includes(screen) && cartCount > 0 && (
         <button className="floating-cart-button" onClick={() => setScreen("basket")}>
-          🛒 {cartCount ? `${cartCount} · ${total} ฿` : "0 ฿"}
+          🛒 {cartCount} · {total} ฿
         </button>
       )}
       {customItem && <CustomizationModal item={customItem} options={customizationOptions[customItem.customizationType] || customizationOptions.rice} selected={customAddons} setSelected={setCustomAddons} note={customNote} setNote={setCustomNote} qty={customQty} setQty={setCustomQty} onClose={() => setCustomItem(null)} onConfirm={confirmCustomization} />}
@@ -620,11 +761,11 @@ function CustomizationModal({ item, options, selected, setSelected, note, setNot
   return <div className="customize-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="customize-dialog" role="dialog" aria-modal="true" aria-labelledby="customize-title"><button className="customize-close" onClick={onClose} aria-label="ปิด">×</button><div className="customize-product"><img src={item.image} alt={item.name} /><div><small>ปรับแต่งเมนู</small><h2 id="customize-title">{item.name}</h2><span>฿{item.price}</span></div></div><div className="customize-section-heading"><b>เพิ่มความอร่อย</b><small>เลือกได้หลายรายการ</small></div><div className="customize-options">{options.map((option) => <label className="customize-option" key={option.id}><input type="checkbox" checked={selected.includes(option.id)} onChange={() => toggle(option.id)} /><span>{option.name}</span><b>+฿{option.price}</b></label>)}</div><label className="customize-note"><b>หมายเหตุถึงร้าน</b><textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="เช่น ไม่ใส่ผัก เผ็ดน้อย แยกน้ำซอส" maxLength={180} /><small>{note.length}/180</small></label><div className="customize-footer"><div className="qty customize-qty"><button onClick={() => setQty(Math.max(1, qty - 1))}>−</button><span>{qty}</span><button onClick={() => setQty(qty + 1)}>＋</button></div><button className="primary-btn" onClick={onConfirm}>เพิ่มลงตะกร้า · ฿{(item.price + addonsTotal) * qty}</button></div></section></div>;
 }
 
-function Basket({ cart, subtotal, deliveryFee, total, changeQty, onBack, onNext, isLoggedIn, onRequireLogin }) {
+function Basket({ cart, subtotal, deliveryFee, total, changeQty, onBack, onNext, isLoggedIn, hasAddress, savedAddress, onRequireLogin, onRequireAddress }) {
   return (
     <>
       <TopBar title="My Cart" onBack={onBack} />
-      {!isLoggedIn && (
+      {!isLoggedIn ? (
         <div className="auth-checkout-notice">
           <div className="auth-checkout-notice-text">
             <b>🔒 กรุณาเข้าสู่ระบบก่อนสั่งซื้อ</b>
@@ -633,6 +774,21 @@ function Basket({ cart, subtotal, deliveryFee, total, changeQty, onBack, onNext,
           <button className="auth-checkout-notice-btn" onClick={onRequireLogin}>
             เข้าสู่ระบบ
           </button>
+        </div>
+      ) : !hasAddress ? (
+        <div className="auth-checkout-notice address-warning-notice">
+          <div className="auth-checkout-notice-text">
+            <b>📍 ต้องระบุที่อยู่ในโปรไฟล์ก่อนสั่งซื้อ</b>
+            <small>กรุณาระบุหอพักและเลขห้องพักสำหรับจัดส่งอาหาร</small>
+          </div>
+          <button className="auth-checkout-notice-btn" onClick={onRequireAddress}>
+            เพิ่มที่อยู่
+          </button>
+        </div>
+      ) : (
+        <div className="cart-delivery-address-chip">
+          <span>📍 จัดส่งถึง: <b>{savedAddress?.dormitory?.name}</b> ห้อง {savedAddress?.roomNumber} ({savedAddress?.dormitory?.soi})</span>
+          <button type="button" onClick={onRequireAddress}>แก้ไข</button>
         </div>
       )}
       <div className="cart-shop">
@@ -674,11 +830,11 @@ function Basket({ cart, subtotal, deliveryFee, total, changeQty, onBack, onNext,
   );
 }
 
-function UpdateBasket({ cart, total, savedPlace, setSavedPlace, changeQty, onBack, onNext, isLoggedIn, onRequireLogin }) {
+function UpdateBasket({ cart, total, savedPlace, setSavedPlace, changeQty, onBack, onNext, isLoggedIn, hasAddress, savedAddress, onRequireLogin, onRequireAddress }) {
   return (
     <>
       <TopBar title="Update Basket" onBack={onBack} action={<b className="orange-text">{total} ฿</b>} />
-      {!isLoggedIn && (
+      {!isLoggedIn ? (
         <div className="auth-checkout-notice">
           <div className="auth-checkout-notice-text">
             <b>🔒 กรุณาเข้าสู่ระบบก่อนสั่งซื้อ</b>
@@ -687,6 +843,21 @@ function UpdateBasket({ cart, total, savedPlace, setSavedPlace, changeQty, onBac
           <button className="auth-checkout-notice-btn" onClick={onRequireLogin}>
             เข้าสู่ระบบ
           </button>
+        </div>
+      ) : !hasAddress ? (
+        <div className="auth-checkout-notice address-warning-notice">
+          <div className="auth-checkout-notice-text">
+            <b>📍 ต้องระบุที่อยู่ในโปรไฟล์ก่อนสั่งซื้อ</b>
+            <small>กรุณาระบุหอพักและเลขห้องพักสำหรับจัดส่งอาหาร</small>
+          </div>
+          <button className="auth-checkout-notice-btn" onClick={onRequireAddress}>
+            เพิ่มที่อยู่
+          </button>
+        </div>
+      ) : (
+        <div className="cart-delivery-address-chip">
+          <span>📍 จัดส่งถึง: <b>{savedAddress?.dormitory?.name}</b> ห้อง {savedAddress?.roomNumber} ({savedAddress?.dormitory?.soi})</span>
+          <button type="button" onClick={onRequireAddress}>แก้ไข</button>
         </div>
       )}
       <div className="order-card">
@@ -724,11 +895,11 @@ function UpdateBasket({ cart, total, savedPlace, setSavedPlace, changeQty, onBac
   );
 }
 
-function PlaceOrder({ cart, subtotal, deliveryFee, total, onBack, onPlace, isLoggedIn, onRequireLogin }) {
+function PlaceOrder({ cart, subtotal, deliveryFee, total, onBack, onPlace, isLoggedIn, hasAddress, savedAddress, onRequireLogin, onRequireAddress }) {
   return (
     <>
       <TopBar title="Order Summary" onBack={onBack} />
-      {!isLoggedIn && (
+      {!isLoggedIn ? (
         <div className="auth-checkout-notice">
           <div className="auth-checkout-notice-text">
             <b>🔒 กรุณาเข้าสู่ระบบก่อนสั่งซื้อ</b>
@@ -737,6 +908,21 @@ function PlaceOrder({ cart, subtotal, deliveryFee, total, onBack, onPlace, isLog
           <button className="auth-checkout-notice-btn" onClick={onRequireLogin}>
             เข้าสู่ระบบ
           </button>
+        </div>
+      ) : !hasAddress ? (
+        <div className="auth-checkout-notice address-warning-notice">
+          <div className="auth-checkout-notice-text">
+            <b>📍 ต้องระบุที่อยู่ในโปรไฟล์ก่อนสั่งซื้อ</b>
+            <small>กรุณาระบุหอพักและเลขห้องพักสำหรับจัดส่งอาหาร</small>
+          </div>
+          <button className="auth-checkout-notice-btn" onClick={onRequireAddress}>
+            เพิ่มที่อยู่
+          </button>
+        </div>
+      ) : (
+        <div className="cart-delivery-address-chip">
+          <span>📍 จัดส่งถึง: <b>{savedAddress?.dormitory?.name}</b> ห้อง {savedAddress?.roomNumber} ({savedAddress?.dormitory?.soi})</span>
+          <button type="button" onClick={onRequireAddress}>แก้ไข</button>
         </div>
       )}
       <div className="summary-card-big">
@@ -765,8 +951,8 @@ function PlaceOrder({ cart, subtotal, deliveryFee, total, onBack, onPlace, isLog
         <b>Payment method</b>
         <div>◉ PromptPay QR Code <span>›</span></div>
       </div>
-      <button className="primary-btn" onClick={onPlace}>
-        {isLoggedIn ? `ยืนยันการสั่งซื้อ · ${total} ฿` : `เข้าสู่ระบบเพื่อสั่งซื้อ · ${total} ฿`}
+      <button className="primary-btn" onClick={!isLoggedIn ? onRequireLogin : !hasAddress ? onRequireAddress : onPlace}>
+        {!isLoggedIn ? `เข้าสู่ระบบเพื่อสั่งซื้อ · ${total} ฿` : !hasAddress ? `ระบุที่อยู่จัดส่งก่อนสั่ง · ${total} ฿` : `ยืนยันการสั่งซื้อ · ${total} ฿`}
       </button>
     </>
   );
@@ -837,22 +1023,279 @@ function Delivery({ order, onBack, onChat, onVerifySlip }) {
   </>;
 }
 
-function Profile({ profile, savedPlace, onBack, onSave, onLogin, onLogout }) {
-  return <><TopBar title="Profile" onBack={onBack} /><div className="profile-card-top"><div className="profile-cover"></div><div className="profile-avatar">👤</div><div className="profile-text"><b>{profile.name}</b><small>{profile.phone}</small></div></div>
-    <div className="profile-menu">
-      <button onClick={onSave}><span>📍 Saved place</span><b>{savedPlace ? "Saved" : "›"}</b></button>
-      <button><span>⚙ Settings</span><b>›</b></button>
-      {profile.isGuest ? (
-        <button onClick={onLogin}><span>⇥ Sign in เข้าสู่ระบบ</span><b>›</b></button>
-      ) : (
-        <button className="danger" onClick={onLogout}><span>↪ Log out ออกจากระบบ</span><b>›</b></button>
-      )}
+function Profile({ profile, savedAddress, onBack, onManageAddress, onOrders, onLogin, onLogout }) {
+  const isGuest = profile.isGuest;
+
+  return (
+    <div className="modern-profile-page">
+      <TopBar title="บัญชีผู้ใช้งาน" onBack={onBack} />
+
+      <div className="modern-profile-card">
+        <div className="modern-profile-cover" />
+        
+        <div className="modern-profile-body">
+          <div className="modern-profile-avatar-wrapper">
+            <div className="modern-profile-avatar">
+              {isGuest ? "👤" : "🎓"}
+            </div>
+          </div>
+
+          <div className="modern-profile-identity">
+            {isGuest ? (
+              <>
+                <h3 className="profile-guest-name">ยังไม่ได้เข้าสู่ระบบ (Guest)</h3>
+                <p className="profile-guest-sub">เข้าสู่ระบบเพื่อจัดการที่อยู่จัดส่ง และดูรายการสั่งซื้อของคุณ</p>
+                <button className="profile-login-action-btn" onClick={onLogin}>
+                  🔑 เข้าสู่ระบบ / สมัครสมาชิก
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="profile-user-badge">นักศึกษา มจพ.</div>
+                <h3 className="profile-user-name">{profile.name}</h3>
+                <div className="profile-meta-chips">
+                  <span>📞 {profile.phone || "ยังไม่ได้ระบุเบอร์"}</span>
+                  <span>✉️ {profile.email || "student@kmutnb.ac.th"}</span>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* กล่องแสดงที่อยู่จัดส่ง */}
+      <div className="profile-section-card">
+        <div className="section-card-header">
+          <div>
+            <b>📍 ที่อยู่จัดส่งของฉัน (Delivery Address)</b>
+            <small>หอพักและเลขห้องสำหรับให้ไรเดอร์จัดส่งอาหาร</small>
+          </div>
+          <button className="section-edit-btn" onClick={onManageAddress}>
+            {savedAddress?.roomNumber ? "แก้ไข" : "ระบุที่อยู่"}
+          </button>
+        </div>
+
+        {savedAddress?.roomNumber ? (
+          <div className="profile-address-display">
+            <div className="address-detail-row">
+              <span className="addr-icon">🏢</span>
+              <div>
+                <b>{savedAddress.dormitory?.name}</b>
+                <small>{savedAddress.dormitory?.soi} {savedAddress.dormitory?.location ? "· มีพิกัดแผนที่" : ""}</small>
+              </div>
+            </div>
+            <div className="address-detail-row">
+              <span className="addr-icon">🚪</span>
+              <div>
+                <b>เลขห้อง: {savedAddress.roomNumber}</b>
+                {savedAddress.note && <small>หมายเหตุ: {savedAddress.note}</small>}
+              </div>
+            </div>
+            {savedAddress.phone && (
+              <div className="address-detail-row">
+                <span className="addr-icon">📞</span>
+                <div>
+                  <small>เบอร์โทรผู้รับ: {savedAddress.phone}</small>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="profile-address-empty">
+            <p>⚠️ ยังไม่ได้ระบุที่อยู่จัดส่ง</p>
+            <small>ระบบจำเป็นต้องมีข้อมูลหอพักและเลขห้องก่อนสั่งซื้ออาหาร</small>
+            <button className="btn-add-address" onClick={onManageAddress}>
+              ＋ เพิ่มที่อยู่จัดส่ง (เลือกหอพัก & ระบุเลขห้อง)
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* เมนูการทำงาน */}
+      <div className="profile-menu-container">
+        <button className="profile-menu-item" onClick={onOrders}>
+          <div className="menu-item-left">
+            <span>📦</span>
+            <div>
+              <b>รายการสั่งซื้อของฉัน</b>
+              <small>ตรวจสอบประวัติและสถานะจัดส่ง</small>
+            </div>
+          </div>
+          <span className="menu-chevron">›</span>
+        </button>
+
+        <button className="profile-menu-item" onClick={onManageAddress}>
+          <div className="menu-item-left">
+            <span>📍</span>
+            <div>
+              <b>จัดการที่อยู่จัดส่ง</b>
+              <small>เลือกจาก 47 หอพักรอบมหาวิทยาลัย</small>
+            </div>
+          </div>
+          <span className="menu-chevron">›</span>
+        </button>
+
+        {!isGuest && (
+          <button className="profile-menu-item logout-item" onClick={onLogout}>
+            <div className="menu-item-left">
+              <span>↪</span>
+              <div>
+                <b style={{ color: "#dc2626" }}>ออกจากระบบ (Log out)</b>
+                <small>ออกจากบัญชี {profile.name}</small>
+              </div>
+            </div>
+            <span className="menu-chevron">›</span>
+          </button>
+        )}
+      </div>
     </div>
-  </>;
+  );
 }
 
-function SavePlace({ saved, onBack, onSave }) {
-  return <><TopBar title="Add a place" onBack={onBack} /><div className="form-card"><h2>Add a place</h2><label>Name / Place<input defaultValue={saved ? "หอพักมหาวิทยาลัย มจพ." : ""} placeholder="e.g. Dorm" /></label><label>Address<input placeholder="Street / building" /></label><label>Note<input placeholder="Additional details" /></label><button className="primary-btn" onClick={onSave}>Save place</button></div></>;
+function SavePlace({ initialAddress, currentDorm, userPhone, onBack, onSave }) {
+  const [selectedDormId, setSelectedDormId] = useState(initialAddress?.dormitory?.id || currentDorm?.id || 1);
+  const [roomNumber, setRoomNumber] = useState(initialAddress?.roomNumber || "");
+  const [phone, setPhone] = useState(initialAddress?.phone || userPhone || "");
+  const [note, setNote] = useState(initialAddress?.note || "");
+  const [searchDorm, setSearchDorm] = useState("");
+  const [filterSoi, setFilterSoi] = useState("All");
+  const [error, setError] = useState("");
+
+  const filteredDorms = useMemo(() => {
+    return dormitories.filter(d => {
+      const matchSearch = d.name.toLowerCase().includes(searchDorm.toLowerCase()) || d.soi.includes(searchDorm);
+      const matchSoi = filterSoi === "All" || d.soi === filterSoi;
+      return matchSearch && matchSoi;
+    });
+  }, [searchDorm, filterSoi]);
+
+  const selectedDorm = dormitories.find(d => d.id === Number(selectedDormId)) || dormitories[0];
+
+  function handleSave(e) {
+    e.preventDefault();
+    if (!roomNumber.trim()) {
+      setError("กรุณาระบุเลขห้องพัก (เช่น ห้อง 304)");
+      return;
+    }
+    if (!phone.trim()) {
+      setError("กรุณาระบุเบอร์โทรศัพท์สำหรับติดต่อจัดส่ง");
+      return;
+    }
+
+    onSave({
+      dormitory: selectedDorm,
+      roomNumber: roomNumber.trim(),
+      phone: phone.trim(),
+      note: note.trim()
+    });
+  }
+
+  return (
+    <div className="save-place-page">
+      <TopBar title="ระบุที่อยู่จัดส่ง" onBack={onBack} />
+
+      <form className="save-place-container" onSubmit={handleSave}>
+        <div className="save-place-header">
+          <span className="save-place-badge">📍 KMUTNB Delivery</span>
+          <h2>ข้อมูลที่อยู่จัดส่ง</h2>
+          <p>เลือกหอพักและระบุเลขห้อง เพื่อให้ไรเดอร์จัดส่งถึงมือคุณได้อย่างถูกต้อง</p>
+        </div>
+
+        {error && <div className="save-place-error">⚠️ {error}</div>}
+
+        {/* 1. เลือกหอพัก */}
+        <div className="address-form-group">
+          <label className="address-form-label">
+            <span>1. เลือกหอพักรอบ มจพ. (มี 47 หอพัก) *</span>
+            <span className="selected-dorm-pill">{selectedDorm?.name} ({selectedDorm?.soi})</span>
+          </label>
+
+          <div className="dorm-search-row">
+            <input
+              type="text"
+              placeholder="🔍 พิมพ์ค้นหาชื่อหอพัก..."
+              value={searchDorm}
+              onChange={(e) => setSearchDorm(e.target.value)}
+              className="dorm-search-input"
+            />
+            <select
+              value={filterSoi}
+              onChange={(e) => setFilterSoi(e.target.value)}
+              className="soi-select-filter"
+            >
+              <option value="All">ทุกซอย</option>
+              {sois.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+            </select>
+          </div>
+
+          <div className="dorm-select-list">
+            {filteredDorms.map(d => (
+              <button
+                type="button"
+                key={d.id}
+                className={`dorm-list-item ${Number(selectedDormId) === d.id ? "selected" : ""}`}
+                onClick={() => setSelectedDormId(d.id)}
+              >
+                <div>
+                  <b>{d.name}</b>
+                  <small>{d.soi}</small>
+                </div>
+                {Number(selectedDormId) === d.id ? <span className="check-icon">✓ เลือกแล้ว</span> : <span className="select-text">เลือก</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 2. ระบุเลขห้อง */}
+        <div className="address-form-group">
+          <label className="address-form-label">2. เลขห้องพัก / ชั้น *</label>
+          <input
+            type="text"
+            className="address-input"
+            placeholder="เช่น ห้อง 304 ชั้น 3 หรือ อาคาร A ห้อง 102"
+            value={roomNumber}
+            onChange={(e) => {
+              setRoomNumber(e.target.value);
+              if (error) setError("");
+            }}
+            required
+          />
+        </div>
+
+        {/* 3. เบอร์โทรติดต่อ */}
+        <div className="address-form-group">
+          <label className="address-form-label">3. เบอร์โทรศัพท์สำหรับให้ไรเดอร์ติดต่อ *</label>
+          <input
+            type="tel"
+            className="address-input"
+            placeholder="เช่น 0812345678"
+            value={phone}
+            onChange={(e) => {
+              setPhone(e.target.value);
+              if (error) setError("");
+            }}
+            required
+          />
+        </div>
+
+        {/* 4. หมายเหตุเพิ่มเติม */}
+        <div className="address-form-group">
+          <label className="address-form-label">4. หมายเหตุถึงผู้ส่ง (ไม่บังคับ)</label>
+          <textarea
+            className="address-textarea"
+            placeholder="เช่น ฝากไว้ที่โต๊ะพัสดุใต้หอพัก, โทรแจ้งก่อนขึ้นไปส่ง, แขวนไว้ที่ประตูห้อง"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            rows={2}
+          />
+        </div>
+
+        <button type="submit" className="btn-save-address-submit">
+          💾 บันทึกที่อยู่จัดส่ง
+        </button>
+      </form>
+    </div>
+  );
 }
 
 function CustomerChat({ storeName, messages, value, setValue, onSend, onBack }) {
