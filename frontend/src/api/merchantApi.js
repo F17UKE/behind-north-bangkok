@@ -38,10 +38,15 @@ export const merchantApi = {
     return res?.data || [];
   },
 
-  // คำนวณค่าจัดส่ง
+  // คำนวณค่าจัดส่ง (ดึงค่าส่งจริงตามซอยจาก Database)
   async getDeliveryFee(merchantId, dormitoryId) {
-    const res = await api.get(`/merchants/${merchantId}/delivery-fee?dormitory_id=${dormitoryId}`);
-    return res?.delivery_fee ?? 10;
+    try {
+      const res = await api.get(`/merchants/${merchantId}/delivery-fee?dormitory_id=${dormitoryId}`);
+      const val = res?.data?.delivery_fee ?? res?.delivery_fee;
+      return (typeof val !== "undefined" && val !== null) ? parseFloat(val) : 10;
+    } catch (e) {
+      return 10;
+    }
   },
 
   // --- Merchant Management (สำหรับร้านค้าจัดการเมนูและโปรไฟล์) ---

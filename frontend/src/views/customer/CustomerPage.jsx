@@ -79,7 +79,10 @@ export default function CustomerPage() {
   const [customNote, setCustomNote] = useState("");
   const [customQty, setCustomQty] = useState(1);
   const [apiNotice, setApiNotice] = useState("");
+  const [dormList, setDormList] = useState(dormitories);
+  const [soiList, setSoiList] = useState(sois);
   const [currentDorm, setCurrentDorm] = useState(dormitories[0]);
+  const [currentDeliveryFee, setCurrentDeliveryFee] = useState(10);
   const [showDormPicker, setShowDormPicker] = useState(false);
   const [chatMessages, setChatMessages] = useState([]);
   const [unreadChatCount, setUnreadChatCount] = useState(0);
@@ -89,6 +92,24 @@ export default function CustomerPage() {
   // 1. ตรวจสอบการล็อกอินและโหลดข้อมูลที่อยู่ / ร้านค้าเมื่อเปิดหน้า
   useEffect(() => {
     async function initCustomerData() {
+      // โหลดข้อมูลหอพักและซอยจริงจากฐานข้อมูล PostgreSQL
+      merchantApi.getSois().then(data => {
+        if (Array.isArray(data) && data.length > 0) setSoiList(data);
+      }).catch(() => {});
+
+      merchantApi.getDormitories().then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          const mapped = data.map(d => ({
+            id: d.id,
+            name: d.name,
+            soi: d.soi_name || `ซอย ${d.soi_id}`,
+            soi_id: d.soi_id,
+            location: d.location || ""
+          }));
+          setDormList(mapped);
+          if (!savedAddress && mapped.length > 0) setCurrentDorm(mapped[0]);
+        }
+      }).catch(() => {});
       const savedUser = authApi.getCurrentUser("CUSTOMER");
       if (savedUser && authApi.isLoggedIn("CUSTOMER")) {
         setProfile({
@@ -174,28 +195,52 @@ export default function CustomerPage() {
     try {
       const data = await merchantApi.getMerchants();
       if (Array.isArray(data) && data.length > 0) {
-        const merged = data.map((store, i) => {
-          const fallback = customerFoods.find(cf => cf.id === store.id || cf.name.toLowerCase() === store.store_name.toLowerCase()) || customerFoods[i % customerFoods.length];
-          const hasRealPhoto = store.store_image_url && (store.store_image_url.startsWith("http://") || store.store_image_url.startsWith("https://"));
-          return {
-            id: store.id,
-            name: store.store_name,
-            category: fallback?.category || "อาหารตามสั่ง",
-            rating: fallback?.rating || 4.8,
-            price: fallback?.price || 50,
-            emoji: fallback?.emoji || "🍛",
-            photo: hasRealPhoto ? store.store_image_url : null,
-            delivery: fallback?.delivery || "20–30 นาที",
-            fee: fallback?.fee || "ส่ง ฿10",
-            tags: fallback?.tags || ["เปิดบริการ"],
-            menu: fallback?.menu || []
-          };
-        });
+        // ดึงรายการเมนูอาหารจริงของแต่ละร้านค้าจากฐานข้อมูล PostgreSQL (MENU_ITEMS)
+        const merged = await Promise.all(
+          data.map(async (store, i) => {
+            let realMenu = [];
+            try {
+              const menuData = await merchantApi.getMerchantMenu(store.id);
+              if (Array.isArray(menuData) && menuData.length > 0) {
+                realMenu = menuData.map(m => ({
+                  id: m.id,
+                  name: m.name,
+                  price: parseFloat(m.price || 0),
+                  description: m.description || "",
+                  image: m.image_url || "/menu-boat-noodles.webp",
+                  photo: m.image_url || null,
+                  emoji: "🍛",
+                  storeId: store.id,
+                  storeName: store.store_name
+                }));
+              }
+            } catch (me) {
+              console.warn(`Could not load menu for merchant ${store.id}:`, me);
+            }
+
+            const fallback = customerFoods.find(cf => cf.id === store.id || cf.name.toLowerCase() === store.store_name.toLowerCase()) || customerFoods[i % customerFoods.length];
+            const hasRealPhoto = store.store_image_url && (store.store_image_url.startsWith("http://") || store.store_image_url.startsWith("https://") || store.store_image_url.startsWith("/"));
+
+            return {
+              id: store.id,
+              name: store.store_name,
+              category: fallback?.category || "อาหารตามสั่ง",
+              rating: fallback?.rating || 4.8,
+              price: fallback?.price || 50,
+              emoji: fallback?.emoji || "🍛",
+              photo: hasRealPhoto ? store.store_image_url : (fallback?.photo || null),
+              delivery: fallback?.delivery || "20–30 นาที",
+              fee: "คิดตามซอยหอพัก",
+              tags: fallback?.tags || ["เปิดบริการ"],
+              menu: realMenu.length > 0 ? realMenu : (fallback?.menu || [])
+            };
+          })
+        );
         setStoreList(merged);
         if (merged[0]) setSelectedStore(merged[0]);
       }
     } catch (err) {
-      console.log("Using local mock merchants (Backend offline or empty):", err.message);
+      console.log("Error loading real merchants:", err.message);
     }
   }
 
@@ -219,9 +264,28 @@ export default function CustomerPage() {
     }
   }
 
+  // คำนวณค่าจัดส่งแบบ Real-time ตามร้านและหอพักที่เลือกจริงจาก PostgreSQL
+  useEffect(() => {
+    async function updateDeliveryFee() {
+      const targetStoreId = cart[0]?.storeId || selectedStore?.id;
+      const targetDormId = savedAddress?.dormitory?.id || currentDorm?.id;
+      if (!targetStoreId || !targetDormId) return;
+
+      try {
+        const fee = await merchantApi.getDeliveryFee(targetStoreId, targetDormId);
+        if (typeof fee === "number" && !isNaN(fee)) {
+          setCurrentDeliveryFee(fee);
+        }
+      } catch (err) {
+        console.warn("Could not fetch delivery fee:", err);
+      }
+    }
+    updateDeliveryFee();
+  }, [selectedStore?.id, currentDorm?.id, savedAddress?.dormitory?.id, cart]);
+
   const cartCount = cart.reduce((s, x) => s + x.qty, 0);
   const subtotal = cart.reduce((s, x) => s + x.price * x.qty, 0);
-  const deliveryFee = subtotal ? 10 : 0;
+  const deliveryFee = subtotal > 0 ? currentDeliveryFee : 0;
   const total = subtotal + deliveryFee;
 
   const filtered = useMemo(() => storeList.filter((food) => {
@@ -394,7 +458,9 @@ export default function CustomerPage() {
         if (orderId) {
           newOrder.rawId = orderId;
           newOrder.id = `#ORD${String(orderId).padStart(3, "0")}`;
-
+          if (serverRes.total_amount || serverRes.data?.total_amount) {
+            newOrder.total = parseFloat(serverRes.total_amount || serverRes.data.total_amount);
+          }
           // รอร้านค้ารับออเดอร์ก่อน ถึงจะสร้างและดึง QR Code PromptPay
           newOrder.status = "PENDING_ACCEPT";
         }
@@ -465,8 +531,23 @@ export default function CustomerPage() {
       setApiNotice(`💬 มีข้อความใหม่จากร้านค้า: ${payload.content_text || payload.contentText || ""}`);
     };
 
+    const handleDeliveryFeeUpdate = (payload) => {
+      console.log("⚡ [Customer Socket] DELIVERY_FEE_UPDATED:", payload);
+      const activeStoreId = cart[0]?.storeId || selectedStore?.id;
+      const activeDormSoiId = savedAddress?.dormitory?.soi_id || currentDorm?.soi_id;
+
+      if (Number(payload.merchant_id) === Number(activeStoreId)) {
+        if (!activeDormSoiId || Number(payload.soi_id) === Number(activeDormSoiId)) {
+          setCurrentDeliveryFee(parseFloat(payload.fee));
+          setApiNotice(`🔔 ร้านค้าปรับค่าส่งของซอยคุณเป็น ฿${payload.fee}`);
+          setTimeout(() => setApiNotice(""), 3500);
+        }
+      }
+    };
+
     socket.on("ORDER_STATUS_UPDATED", handleStatus);
     socket.on("NEW_CHAT_MESSAGE", handleNewChat);
+    socket.on("DELIVERY_FEE_UPDATED", handleDeliveryFeeUpdate);
 
     // โหลด unread count เริ่มต้น
     if (authApi.isLoggedIn("CUSTOMER")) {
@@ -478,6 +559,7 @@ export default function CustomerPage() {
     return () => {
       socket.off("ORDER_STATUS_UPDATED", handleStatus);
       socket.off("NEW_CHAT_MESSAGE", handleNewChat);
+      socket.off("DELIVERY_FEE_UPDATED", handleDeliveryFeeUpdate);
     };
   }, []);
 
@@ -692,6 +774,8 @@ export default function CustomerPage() {
         )}
         {screen === "save-place" && (
           <SavePlace
+            dormList={dormList}
+            soiList={soiList}
             initialAddress={savedAddress}
             currentDorm={currentDorm}
             userPhone={profile.phone}
@@ -870,7 +954,7 @@ export default function CustomerPage() {
         </button>
       )}
       {customItem && <CustomizationModal item={customItem} options={customizationOptions[customItem.customizationType] || customizationOptions.rice} selected={customAddons} setSelected={setCustomAddons} note={customNote} setNote={setCustomNote} qty={customQty} setQty={setCustomQty} onClose={() => setCustomItem(null)} onConfirm={confirmCustomization} />}
-      {showDormPicker && <DormitoryPickerModal currentDorm={currentDorm} onSelect={(dorm) => { setCurrentDorm(dorm); setShowDormPicker(false); }} onClose={() => setShowDormPicker(false)} />}
+      {showDormPicker && <DormitoryPickerModal dormList={dormList} soiList={soiList} currentDorm={currentDorm} onSelect={(dorm) => { setCurrentDorm(dorm); setShowDormPicker(false); }} onClose={() => setShowDormPicker(false)} />}
     </MobileShell>
   );
 }
@@ -1811,7 +1895,7 @@ function Profile({ profile, savedAddress, onBack, onManageAddress, onOrders, onL
   );
 }
 
-function SavePlace({ initialAddress, currentDorm, userPhone, onBack, onSave }) {
+function SavePlace({ dormList = dormitories, soiList = sois, initialAddress, currentDorm, userPhone, onBack, onSave }) {
   const [selectedDormId, setSelectedDormId] = useState(initialAddress?.dormitory?.id || currentDorm?.id || 1);
   const [roomNumber, setRoomNumber] = useState(initialAddress?.roomNumber || "");
   const [phone, setPhone] = useState(initialAddress?.phone || userPhone || "");
@@ -1821,14 +1905,14 @@ function SavePlace({ initialAddress, currentDorm, userPhone, onBack, onSave }) {
   const [error, setError] = useState("");
 
   const filteredDorms = useMemo(() => {
-    return dormitories.filter(d => {
+    return dormList.filter(d => {
       const matchSearch = d.name.toLowerCase().includes(searchDorm.toLowerCase()) || d.soi.includes(searchDorm);
       const matchSoi = filterSoi === "All" || d.soi === filterSoi;
       return matchSearch && matchSoi;
     });
   }, [searchDorm, filterSoi]);
 
-  const selectedDorm = dormitories.find(d => d.id === Number(selectedDormId)) || dormitories[0];
+  const selectedDorm = dormList.find(d => d.id === Number(selectedDormId)) || dormList[0];
 
   function handleSave(e) {
     e.preventDefault();
@@ -2298,12 +2382,12 @@ function CustomerAuth({ mode, onBack, onSuccess, onSignUp, onLogin, isOrdering }
   );
 }
 
-function DormitoryPickerModal({ currentDorm, onSelect, onClose }) {
+function DormitoryPickerModal({ dormList = dormitories, soiList = sois, currentDorm, onSelect, onClose }) {
   const [q, setQ] = useState("");
   const [selectedSoi, setSelectedSoi] = useState("All");
 
   const filteredDorms = useMemo(() => {
-    return dormitories.filter((d) => {
+    return dormList.filter((d) => {
       const matchName = d.name.toLowerCase().includes(q.toLowerCase());
       const matchSoi = selectedSoi === "All" || d.soi === selectedSoi;
       return matchName && matchSoi;
@@ -2352,7 +2436,7 @@ function DormitoryPickerModal({ currentDorm, onSelect, onClose }) {
           >
             ทุกซอย
           </button>
-          {sois.map((s) => (
+          {soiList.map((s) => (
             <button
               key={s.id}
               type="button"

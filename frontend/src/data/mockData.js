@@ -209,10 +209,7 @@ export const stores = customerFoods;
 export const customerMenu = customerFoods.flatMap(store => store.menu);
 export const menuItems = customerMenu;
 
-export const initialOrders = [
-  { id: "#ORD001", store: "ตามสั่ง by เชฟเจนนี่", items: ["ข้าวผัดอเมริกัน x1"], total: 70, status: "PREPARING", date: "Today, 10:25" },
-  { id: "#ORD000", store: "หมี่ไก่ฉีก by JK", items: ["หมี่ไก่ฉีก x1", "น้ำพริกกากหมูใหญ่ x1"], total: 95, status: "COMPLETED", date: "Yesterday, 12:20" },
-];
+export const initialOrders = [];
 
 export const merchantOrdersSeed = [
   { id: "#ORD001", customer: "นักศึกษา มจพ.", total: 70, status: "PREPARING", items: ["ข้าวผัดอเมริกัน x1"], time: "10:25" },

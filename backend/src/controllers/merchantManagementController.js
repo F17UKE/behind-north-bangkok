@@ -177,6 +177,14 @@ exports.updateDeliveryFee = async (req, res) => {
     const merchantId = req.user.id;
     const { soi_id, fee } = req.body;
     const updated = await repo.upsertDeliveryFee(merchantId, soi_id, fee);
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('DELIVERY_FEE_UPDATED', {
+        merchant_id: Number(merchantId),
+        soi_id: Number(soi_id),
+        fee: parseFloat(fee)
+      });
+    }
     res.status(200).json({ success: true, data: updated[0] });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });

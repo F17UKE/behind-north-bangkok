@@ -173,7 +173,10 @@ export default function MerchantPage() {
     const rawId = target?.rawId || id.replace("#ORD", "").replace(/^[A-Z]+-/, "");
 
     try {
-      if (status === "PREPARING") {
+      if (status === "PENDING_PAYMENT") {
+        await orderApi.acceptOrder(rawId);
+        setStatusNotice(`✅ รับออเดอร์ ${id} สำเร็จแล้ว (รอลูกค้าชำระเงิน)`);
+      } else if (status === "PREPARING") {
         await orderApi.startPreparing(rawId).catch(() => orderApi.acceptOrder(rawId));
         setStatusNotice(`⚡ อัปเดตออเดอร์ ${id} กำลังทำอาหาร`);
       } else if (status === "READY_FOR_DELIVERY") {
@@ -548,8 +551,8 @@ function MerchantOrders({ orders, filter, setFilter, query, setQuery, onBack, up
               <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
                 {o.status === "PENDING_ACCEPT" && (
                   <>
-                    <button className="accept-button" onClick={() => updateOrder(o.id, "PREPARING")}>
-                      ✓ รับ & เริ่มทำ
+                    <button className="accept-button" onClick={() => updateOrder(o.id, "PENDING_PAYMENT")}>
+                      ✅ รับออเดอร์ (ให้ลูกค้าชำระเงิน)
                     </button>
                     <button 
                       onClick={() => updateOrder(o.id, "REJECTED_BY_MERCHANT")}
@@ -568,9 +571,14 @@ function MerchantOrders({ orders, filter, setFilter, query, setQuery, onBack, up
                     </button>
                   </>
                 )}
-                {["PAID", "PENDING_PAYMENT"].includes(o.status) && (
-                  <button className="accept-button" onClick={() => updateOrder(o.id, "PREPARING")}>
-                    🍳 เริ่มทำอาหาร
+                {o.status === "PENDING_PAYMENT" && (
+                  <span style={{ fontSize: "12px", color: "#d97706", fontWeight: 700, background: "#fef3c7", padding: "5px 10px", borderRadius: "8px", border: "1px solid #fde68a" }}>
+                    ⏳ รอลูกค้าโอนเงิน & แนบสลิป
+                  </span>
+                )}
+                {o.status === "PAID" && (
+                  <button className="accept-button" onClick={() => updateOrder(o.id, "PREPARING")} style={{ background: "linear-gradient(135deg, #10b981 0%, #059669 100%)" }}>
+                    🍳 ลูกค้าชำระแล้ว เริ่มทำอาหาร
                   </button>
                 )}
                 {o.status === "PREPARING" && (
