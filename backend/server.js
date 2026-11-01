@@ -26,8 +26,8 @@ const riderManagementRoutes = require('./src/routes/riderManagement');
 const orderWorkflowRoute = require('./src/routes/orderWorkflow');
 const riderBoardRoute = require('./src/routes/riderBoard');
 const masterDataRoute = require('./src/routes/masterData');
-const uploadRoutes = require('./src/routes/upload'); // [เพิ่ม] ระบบอัปโหลดรูปภาพ (Supabase Storage)
-const adminRoutes = require('./src/routes/admin');   // [เพิ่ม] ระบบ Admin และอนุมัติร้านค้า
+const uploadRoutes = require('./src/routes/upload');
+const adminRoutes = require('./src/routes/admin');
 
 // 2. Mount Routes
 app.use('/api', masterDataRoute);
@@ -43,8 +43,8 @@ app.use('/api/merchant-management', merchantManagementRoutes);
 app.use('/api/merchant-management/riders', riderManagementRoutes);
 app.use('/api/order-workflow', orderWorkflowRoute);
 app.use('/api/riders', riderBoardRoute);
-app.use('/api/upload', uploadRoutes);               // [เพิ่ม] /api/upload/slip, /api/upload/menu-image, /api/upload/store-image
-app.use('/api/admin', adminRoutes);                 // [เพิ่ม] /api/admin/merchants/pending, approve, reject
+app.use('/api/upload', uploadRoutes);
+app.use('/api/admin', adminRoutes);
 
 // 3. ตั้งค่า Socket.io สำหรับระบบ Real-time Chat และ Notification
 const io = new Server(server, {
@@ -65,6 +65,7 @@ storageService.ensureBucketExists().catch(err => console.error('Bucket check war
 // 5. Cron Jobs: Data Purging & Storage Cleanup
 const chatRepository = require('./src/repositories/chatRepository');
 const paymentRepository = require('./src/repositories/paymentRepository');
+const orderTimeoutService = require('./src/services/orderTimeoutService');
 
 // รันทุกๆ 1 ชั่วโมง เพื่อลบข้อความแชทเกิน 24 ชม.
 cron.schedule('0 * * * *', async () => {
@@ -96,6 +97,15 @@ cron.schedule('0 0 * * *', async () => {
         }
     } catch (error) {
         console.error('[Cron Job] Failed during weekly storage cleanup:', error);
+    }
+});
+
+// รันทุกๆ 1 นาที เพื่อตรวจสอบและยกเลิกออเดอร์ที่ค้างเกินเวลา (Auto-Cancel Timeout)
+cron.schedule('* * * * *', async () => {
+    try {
+        await orderTimeoutService.checkAndCancelTimedOutOrders(io);
+    } catch (error) {
+        console.error('[Cron Job] Order timeout check error:', error);
     }
 });
 
