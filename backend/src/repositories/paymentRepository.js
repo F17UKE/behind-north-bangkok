@@ -3,16 +3,23 @@ const db = require('../db');
 
 // ดึงข้อมูลออเดอร์และ promptpay_id ของร้านค้า เพื่อเตรียมสร้าง QR หรือตรวจยอด
 const getOrderPaymentInfo = async (orderId, trx = db) => {
-    return trx('ORDERS')
+    const query = trx('ORDERS')
         .join('MERCHANTS', 'ORDERS.merchant_id', '=', 'MERCHANTS.id')
         .select(
             'ORDERS.id as order_id',
+            'ORDERS.merchant_id',
+            'ORDERS.customer_id',
+            'ORDERS.order_code',
             'ORDERS.total_amount',
             'ORDERS.status',
             'MERCHANTS.promptpay_id'
-        )
-        .where('ORDERS.id', orderId)
-        .first();
+        );
+
+    if (!isNaN(orderId)) {
+        return query.where('ORDERS.id', Number(orderId)).first();
+    } else {
+        return query.where('ORDERS.order_code', String(orderId).replace(/^#/, '')).first();
+    }
 };
 
 // ตรวจสอบว่ามี ref_number นี้ในระบบหรือยัง

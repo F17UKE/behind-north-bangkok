@@ -35,6 +35,15 @@ export default function MerchantPage() {
     }
   }, []);
 
+  // Polling fallback ทุกๆ 4 วินาที สำหรับร้านค้า เพื่อให้ออเดอร์อัปเดตสดเสมอแม้ Socket ขัดข้อง
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    const interval = setInterval(() => {
+      loadMerchantOrders();
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [isLoggedIn]);
+
   function initSocket(merchantUser) {
     const socket = getSocket("MERCHANT");
     if (!socket) return;
@@ -89,11 +98,17 @@ export default function MerchantPage() {
       if (!order_id || !status) return;
 
       setOrders((current) => current.map((o) => {
-        const isMatch = o.rawId === Number(order_id) || o.id === `#ORD${String(order_id).padStart(3, "0")}`;
+        const isMatch = Number(o.rawId) === Number(order_id) || 
+                        o.id === `#ORD${String(order_id).padStart(3, "0")}` ||
+                        (payload.order_code && o.id.includes(payload.order_code.replace(/^#/, "")));
         return isMatch ? { ...o, status } : o;
       }));
 
-      setStatusNotice(`⚡ ออเดอร์ #${order_id} อัปเดตสถานะ: ${statusLabel[status] || status}`);
+      // ดึงรายการออเดอร์ล่าสุดจากฐานข้อมูลทันทีเพื่อให้สถานะและข้อมูลครบถ้วน
+      loadMerchantOrders();
+
+      const displayCode = payload.order_code ? (payload.order_code.startsWith("#") ? payload.order_code : `#${payload.order_code}`) : `#${order_id}`;
+      setStatusNotice(`⚡ ออเดอร์ ${displayCode} อัปเดตสถานะ: ${statusLabel[status] || status}`);
       playOrderChime();
       setTimeout(() => setStatusNotice(""), 3500);
     };

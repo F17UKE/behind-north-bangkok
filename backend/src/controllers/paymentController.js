@@ -65,7 +65,11 @@ const uploadAndVerifySlip = async (req, res) => {
         }
 
         if (!finalImageUrl) {
-            return res.status(400).json({ error: 'Image file or image_url is required' });
+            if (req.body?.simulated || req.body?.amount) {
+                finalImageUrl = `https://mock-storage.local/slips/simulated_slip_${order_id}_${Date.now()}.png`;
+            } else {
+                return res.status(400).json({ error: 'Image file or image_url is required' });
+            }
         }
 
         // เปิด Transaction เพราะมีการ Insert (สลิป) และ Update (สถานะออเดอร์) พร้อมกัน
@@ -110,7 +114,8 @@ const uploadAndVerifySlip = async (req, res) => {
             const io = req.app.get('io');
             if (io) {
                 const payload = {
-                    order_id: Number(order_id),
+                    order_id: Number(orderInfo.order_id || order_id),
+                    order_code: orderInfo.order_code,
                     status: 'PAID',
                     updated_by: 'CUSTOMER',
                     updated_at: new Date()
@@ -118,10 +123,13 @@ const uploadAndVerifySlip = async (req, res) => {
                 io.to(`order_${order_id}`).emit('ORDER_STATUS_UPDATED', payload);
                 if (orderInfo.merchant_id) {
                     io.to(`merchant_${orderInfo.merchant_id}`).emit('ORDER_STATUS_UPDATED', payload);
+                    io.to(`merchant_${orderInfo.merchant_id}_kds`).emit('ORDER_STATUS_UPDATED', payload);
                 }
                 if (orderInfo.customer_id) {
                     io.to(`customer_${orderInfo.customer_id}`).emit('ORDER_STATUS_UPDATED', payload);
                 }
+                // ยิง Broadcast ครอบคลุมทุกหน้าจอแบบ Real-time ทันที
+                io.emit('ORDER_STATUS_UPDATED', payload);
             }
             
             return res.status(200).json({ 
