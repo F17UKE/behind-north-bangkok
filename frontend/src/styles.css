@@ -707,13 +707,14 @@ h1, h2, h3, p { margin: 0; }
 .add-btn {
   width: 34px;
   height: 34px;
-  border-radius: 10px;
+  border-radius: 50%;
   border: 0;
   background: var(--orange);
   color: #fff;
   display: grid;
   place-items: center;
 }
+.add-btn::after { content: "+"; color: #fff; font: 700 20px/1 Arial, sans-serif; }
 
 .add-btn:disabled { background: #ddd; }
 

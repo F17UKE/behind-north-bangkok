@@ -286,6 +286,7 @@
 .store-menu-item-bottom { display: flex; align-items: center; justify-content: space-between; }
 .store-menu-item-bottom strong { color: #32251e; font-size: 15px; }
 .store-menu-item-bottom button { display: grid; width: 36px; height: 36px; place-items: center; border: 0; border-radius: 50%; background: var(--store-orange); color: #fff; font-size: 20px; box-shadow: 0 6px 14px #f36b2130; transition: transform .18s; }
+.store-menu-item-bottom button::after { content: "+"; color: #fff; font: 700 22px/1 Arial, sans-serif; }
 .store-menu-item-bottom button:hover { transform: scale(1.08); }
 .restaurant-detail .store-cart-cta { display: none; }
 
