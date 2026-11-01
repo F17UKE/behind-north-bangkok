@@ -61,6 +61,7 @@ const getAllMerchants = async (req, res) => {
                 'id',
                 'username',
                 'store_name',
+                'category',
                 'promptpay_id',
                 'prefix',
                 'location',
@@ -78,6 +79,52 @@ const getAllMerchants = async (req, res) => {
     } catch (error) {
         console.error('Error fetching all merchants:', error);
         return res.status(500).json({ success: false, error: 'Failed to fetch merchants' });
+    }
+};
+
+const getMerchantMenus = async (req, res) => {
+    try {
+        const merchantId = Number(req.params.merchant_id);
+        const merchant = await knex('MERCHANTS')
+            .select('id', 'store_name')
+            .where('id', merchantId)
+            .first();
+        if (!merchant) {
+            return res.status(404).json({ success: false, error: 'Merchant not found' });
+        }
+
+        const menus = await knex('MENU_ITEMS')
+            .select('id', 'name', 'description', 'price', 'is_available', 'image_url', 'merchant_id')
+            .where('merchant_id', merchantId)
+            .orderBy('name');
+        const menuIds = menus.map((menu) => menu.id);
+        const groups = menuIds.length
+            ? await knex('MENU_OPTION_GROUPS')
+                .select('id', 'name', 'is_required', 'allow_multiple', 'menu_item_id')
+                .whereIn('menu_item_id', menuIds)
+                .orderBy('id')
+            : [];
+        const groupIds = groups.map((group) => group.id);
+        const choices = groupIds.length
+            ? await knex('MENU_OPTION_CHOICES')
+                .select('id', 'name', 'extra_price', 'option_group_id')
+                .whereIn('option_group_id', groupIds)
+                .orderBy('id')
+            : [];
+        const data = menus.map((menu) => ({
+            ...menu,
+            option_groups: groups
+                .filter((group) => group.menu_item_id === menu.id)
+                .map((group) => ({
+                    ...group,
+                    choices: choices.filter((choice) => choice.option_group_id === group.id)
+                }))
+        }));
+
+        return res.status(200).json({ success: true, merchant, count: data.length, data });
+    } catch (error) {
+        console.error('Error fetching merchant menus for admin:', error);
+        return res.status(500).json({ success: false, error: 'Failed to fetch merchant menus' });
     }
 };
 
@@ -169,6 +216,7 @@ module.exports = {
     getUsers,
     getPendingMerchants,
     getAllMerchants,
+    getMerchantMenus,
     approveMerchant,
     rejectMerchant
 };

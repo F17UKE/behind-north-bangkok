@@ -16,6 +16,7 @@ router.get('/merchants/pending', adminController.getPendingMerchants);
 
 // 2. ดึงรายการร้านค้าทั้งหมด
 router.get('/merchants', adminController.getAllMerchants);
+router.get('/merchants/:merchant_id/menus', adminController.getMerchantMenus);
 
 // 3. อนุมัติร้านค้า
 router.patch('/merchants/:merchant_id/approve', adminController.approveMerchant);

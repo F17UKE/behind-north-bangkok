@@ -7,6 +7,7 @@ require('dotenv').config();
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const bucketName = process.env.SUPABASE_STORAGE_BUCKET || 'behind-north-bangkok';
+const menuImagesBucketName = process.env.SUPABASE_MENU_IMAGES_BUCKET || 'menu-images';
 
 let supabase = null;
 
@@ -64,6 +65,7 @@ const uploadImage = async (file, folder = 'general') => {
     const randomHash = crypto.randomBytes(6).toString('hex');
     const fileName = `${Date.now()}_${randomHash}${fileExt}`;
     const filePath = `${folder}/${fileName}`;
+    const targetBucket = bucketForFolder(folder);
 
     // ห้ามส่ง URL จำลองกลับไปให้ client เพราะไฟล์จะเปิดไม่ได้จริง
     if (!supabase) {
@@ -72,7 +74,7 @@ const uploadImage = async (file, folder = 'general') => {
 
     // อัปโหลดไฟล์ขึ้น Supabase
     const { data, error } = await supabase.storage
-        .from(bucketName)
+        .from(targetBucket)
         .upload(filePath, file.buffer, {
             contentType: file.mimetype,
             upsert: false
@@ -85,7 +87,7 @@ const uploadImage = async (file, folder = 'general') => {
 
     // ดึง Public URL ของไฟล์
     const { data: urlData } = supabase.storage
-        .from(bucketName)
+        .from(targetBucket)
         .getPublicUrl(filePath);
 
     return {
@@ -100,10 +102,11 @@ const uploadImage = async (file, folder = 'general') => {
  */
 const deleteImage = async (filePath) => {
     if (!supabase || !filePath) return false;
+    const targetBucket = bucketForFolder(filePath);
 
     try {
         const { error } = await supabase.storage
-            .from(bucketName)
+            .from(targetBucket)
             .remove([filePath]);
 
         if (error) {
@@ -116,6 +119,10 @@ const deleteImage = async (filePath) => {
         return false;
     }
 };
+
+const bucketForFolder = (folder) => (
+    String(folder).split('/')[0] === 'menus' ? menuImagesBucketName : bucketName
+);
 
 /**
  * ล้างไฟล์รูปภาพที่อายุเกินที่กำหนดออกจาก Supabase Storage (ค่าเริ่มต้น: 7 วัน / 1 สัปดาห์)
