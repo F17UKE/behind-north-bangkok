@@ -1351,23 +1351,46 @@ function CustomizationModal({ item, selected, setSelected, note, setNote, qty, s
   const groups = item.option_groups || [];
   const allChoices = groups.flatMap(g => g.choices || []);
   const addonsTotal = allChoices
-    .filter(choice => selected.includes(choice.id) || selected.includes(String(choice.id)))
+    .filter(choice => selected.includes(choice.id) || selected.includes(String(choice.id)) || selected.includes(Number(choice.id)))
     .reduce((sum, choice) => sum + parseFloat(choice.extra_price || choice.price || 0), 0);
 
-  const toggleSingle = (groupId, choiceId) => {
+  // ตรวจสอบกลุ่มที่จำเป็นต้องเลือก (Required validation)
+  const missingRequiredGroup = groups.find(group => {
+    const isReq = Boolean(group.is_required || group.isRequired);
+    if (!isReq) return false;
+    const groupChoiceIds = (group.choices || []).map(c => c.id);
+    return !selected.some(id => groupChoiceIds.includes(id) || groupChoiceIds.includes(Number(id)) || groupChoiceIds.includes(String(id)));
+  });
+
+  const toggleSingle = (groupId, choiceId, isRequired) => {
     const groupChoices = (groups.find(g => g.id === groupId)?.choices || []).map(c => c.id);
-    setSelected(current => [
-      ...current.filter(id => !groupChoices.includes(id) && !groupChoices.includes(Number(id))),
-      choiceId
-    ]);
+    setSelected(current => {
+      const isCurrentlySelected = current.includes(choiceId) || current.includes(Number(choiceId)) || current.includes(String(choiceId));
+      const withoutGroup = current.filter(id => !groupChoices.includes(id) && !groupChoices.includes(Number(id)) && !groupChoices.includes(String(id)));
+      
+      // ถ้าเลือกอยู่แล้ว และกลุ่มนี้ไม่บังคับเลือก ให้เอาออก (Deselect / Uncheck) ได้
+      if (isCurrentlySelected && !isRequired) {
+        return withoutGroup;
+      }
+      return [...withoutGroup, choiceId];
+    });
   };
 
   const toggleMultiple = (choiceId) => {
-    setSelected(current =>
-      current.includes(choiceId)
-        ? current.filter(id => id !== choiceId)
-        : [...current, choiceId]
-    );
+    setSelected(current => {
+      const isCurrentlySelected = current.includes(choiceId) || current.includes(Number(choiceId)) || current.includes(String(choiceId));
+      return isCurrentlySelected
+        ? current.filter(id => id !== choiceId && Number(id) !== Number(choiceId) && String(id) !== String(choiceId))
+        : [...current, choiceId];
+    });
+  };
+
+  const handleConfirm = () => {
+    if (missingRequiredGroup) {
+      alert(`กรุณาเลือก "${missingRequiredGroup.name}" ก่อนเพิ่มลงตะกร้า`);
+      return;
+    }
+    onConfirm();
   };
 
   return (
@@ -1391,24 +1414,37 @@ function CustomizationModal({ item, selected, setSelected, note, setNote, qty, s
 
         {groups.length > 0 ? (
           groups.map(group => {
-            const isSingle = !group.is_multiple_choice && !group.isMultiple;
+            const isMultiple = Boolean(group.allow_multiple || group.is_multiple_choice || group.isMultiple);
+            const isRequired = Boolean(group.is_required || group.isRequired);
+
             return (
               <div key={group.id} style={{ marginBottom: "16px" }}>
                 <div className="customize-section-heading">
                   <b>{group.name}</b>
-                  <small>{group.is_required ? "จำเป็นต้องเลือก 1 ข้อ" : isSingle ? "เลือกได้ 1 รายการ" : "เลือกได้หลายรายการ"}</small>
+                  <small>
+                    {isRequired
+                      ? "จำเป็นต้องเลือก 1 ข้อ"
+                      : isMultiple
+                        ? "ไม่บังคับ (เลือกได้หลายอย่าง)"
+                        : "ไม่บังคับ (เลือกได้ 1 รายการ หรือคลิกซ้ำเพื่อเอาออก)"}
+                  </small>
                 </div>
                 <div className="customize-options">
                   {(group.choices || []).map(choice => {
-                    const isChecked = selected.includes(choice.id) || selected.includes(String(choice.id));
+                    const isChecked = selected.includes(choice.id) || selected.includes(String(choice.id)) || selected.includes(Number(choice.id));
                     const extra = parseFloat(choice.extra_price || choice.price || 0);
+
                     return (
-                      <label className="customize-option" key={choice.id}>
+                      <label 
+                        className="customize-option" 
+                        key={choice.id}
+                        style={{ cursor: "pointer", userSelect: "none" }}
+                      >
                         <input
-                          type={isSingle ? "radio" : "checkbox"}
+                          type={isMultiple ? "checkbox" : isRequired ? "radio" : "checkbox"}
                           name={`group_${group.id}`}
                           checked={isChecked}
-                          onChange={() => isSingle ? toggleSingle(group.id, choice.id) : toggleMultiple(choice.id)}
+                          onChange={() => isMultiple ? toggleMultiple(choice.id) : toggleSingle(group.id, choice.id, isRequired)}
                         />
                         <span>{choice.name}</span>
                         <b>{extra > 0 ? `+฿${extra}` : "ฟรี"}</b>
@@ -1442,8 +1478,17 @@ function CustomizationModal({ item, selected, setSelected, note, setNote, qty, s
             <span>{qty}</span>
             <button onClick={() => setQty(qty + 1)}>＋</button>
           </div>
-          <button className="primary-btn" onClick={onConfirm}>
-            เพิ่มลงตะกร้า · ฿{(item.price + addonsTotal) * qty}
+          <button 
+            className="primary-btn" 
+            onClick={handleConfirm}
+            style={{
+              opacity: missingRequiredGroup ? 0.75 : 1,
+              transition: "all 0.2s"
+            }}
+          >
+            {missingRequiredGroup 
+              ? `กรุณาเลือก ${missingRequiredGroup.name}` 
+              : `เพิ่มลงตะกร้า · ฿${(item.price + addonsTotal) * qty}`}
           </button>
         </div>
       </section>
