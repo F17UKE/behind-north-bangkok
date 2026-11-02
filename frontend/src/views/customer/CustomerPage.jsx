@@ -1281,6 +1281,46 @@ function CustomizationModal({ item, options, selected, setSelected, note, setNot
   return <div className="customize-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="customize-dialog" role="dialog" aria-modal="true" aria-labelledby="customize-title"><button className="customize-close" onClick={onClose} aria-label="ปิด">×</button><div className="customize-product">{item.image ? <img src={item.image} alt={item.name} /> : <div style={{ width: "64px", height: "64px", borderRadius: "12px", background: "#fff7ed", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "32px", flexShrink: 0 }}>{item.emoji || "🍲"}</div>}<div><small>ปรับแต่งเมนู</small><h2 id="customize-title">{item.name}</h2><span>฿{item.price}</span></div></div><div className="customize-section-heading"><b>เพิ่มความอร่อย</b><small>เลือกได้หลายรายการ</small></div><div className="customize-options">{options.map((option) => <label className="customize-option" key={option.id}><input type="checkbox" checked={selected.includes(option.id)} onChange={() => toggle(option.id)} /><span>{option.name}</span><b>+฿{option.price}</b></label>)}</div><label className="customize-note"><b>หมายเหตุถึงร้าน</b><textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="เช่น ไม่ใส่ผัก เผ็ดน้อย แยกน้ำซอส" maxLength={180} /><small>{note.length}/180</small></label><div className="customize-footer"><div className="qty customize-qty"><button onClick={() => setQty(Math.max(1, qty - 1))}>−</button><span>{qty}</span><button onClick={() => setQty(qty + 1)}>＋</button></div><button className="primary-btn" onClick={onConfirm}>เพิ่มลงตะกร้า · ฿{(item.price + addonsTotal) * qty}</button></div></section></div>;
 }
 
+function CartStoreThumb({ storeId }) {
+  return (
+    <div
+      className="food-thumb"
+      style={{
+        width: "44px",
+        height: "44px",
+        borderRadius: "10px",
+        background: "#fff7ed",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: "22px",
+        flexShrink: 0
+      }}
+    >
+      🏪
+    </div>
+  );
+}
+
+function Summary({ subtotal, delivery, total }) {
+  return (
+    <div className="summary" style={{ marginTop: "14px", borderTop: "1px dashed #e2e8f0", paddingTop: "12px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px", color: "#64748b", fontSize: "14px" }}>
+        <span>ค่าอาหาร (Subtotal)</span>
+        <b>{subtotal} ฿</b>
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px", color: "#64748b", fontSize: "14px" }}>
+        <span>ค่าบริการจัดส่ง (Delivery)</span>
+        <b>{delivery} ฿</b>
+      </div>
+      <div className="total" style={{ display: "flex", justifyContent: "space-between", borderTop: "1px solid #f1f5f9", paddingTop: "8px", fontSize: "16px", color: "#0f172a" }}>
+        <span>ยอดรวมทั้งสิ้น (Total)</span>
+        <strong style={{ color: "#ea580c" }}>{total} ฿</strong>
+      </div>
+    </div>
+  );
+}
+
 function Basket({ cart, subtotal, deliveryFee, total, deliveryMethod = "DELIVERY", setDeliveryMethod, changeQty, onBack, onNext, isLoggedIn, hasAddress, savedAddress, onRequireLogin, onRequireAddress, onCheckoutStore }) {
   const storesInCart = useMemo(() => {
     const map = new Map();
