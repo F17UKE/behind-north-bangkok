@@ -102,10 +102,10 @@ const uploadAndVerifySlip = async (req, res) => {
             }
 
             // 3. ถ้าสลิปถูกต้อง บันทึกข้อมูลลงตาราง PAYMENT_SLIPS
-            await paymentRepository.saveSlip(order_id, finalImageUrl, verificationResult.refNumber, trx);
+            await paymentRepository.saveSlip(orderInfo.order_id, finalImageUrl, verificationResult.refNumber, trx);
 
             // 4. เปลี่ยนสถานะออเดอร์เป็น PREPARING (ร้านค้ารับเงินแล้ว เริ่มทำอาหารทันทีโดยไม่ต้องกดยืนยันซ้ำ)
-            await paymentRepository.updateOrderStatus(order_id, 'PREPARING', trx);
+            await paymentRepository.updateOrderStatus(orderInfo.order_id, 'PREPARING', trx);
 
             // ยืนยันการเปลี่ยนแปลงข้อมูล
             await trx.commit();
@@ -120,7 +120,8 @@ const uploadAndVerifySlip = async (req, res) => {
                     updated_by: 'CUSTOMER',
                     updated_at: new Date()
                 };
-                io.to(`order_${order_id}`).emit('ORDER_STATUS_UPDATED', payload);
+                io.to(`order_${orderInfo.order_id}`).emit('ORDER_STATUS_UPDATED', payload);
+                io.to(`order_${orderInfo.order_code}`).emit('ORDER_STATUS_UPDATED', payload);
                 if (orderInfo.merchant_id) {
                     io.to(`merchant_${orderInfo.merchant_id}`).emit('ORDER_STATUS_UPDATED', payload);
                     io.to(`merchant_${orderInfo.merchant_id}_kds`).emit('ORDER_STATUS_UPDATED', payload);

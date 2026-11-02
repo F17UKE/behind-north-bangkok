@@ -648,7 +648,7 @@ export default function CustomerPage() {
   async function verifySlip(order, slipFile) {
     if (!order) return;
     try {
-      const orderId = order.rawId || 1;
+      const orderId = order.rawId || (order.id ? String(order.id).replace(/^#/, '') : null) || 1;
       let res;
       if (slipFile) {
         res = await orderApi.verifySlip(orderId, slipFile);
@@ -1803,23 +1803,36 @@ function Delivery({ order, onBack, onChat, onVerifySlip, onCancelOrder, unreadMe
   const [slipFile, setSlipFile] = useState(null);
   const [verifying, setVerifying] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [qrError, setQrError] = useState("");
+  const targetOrderId = order?.rawId || (order?.id ? String(order.id).replace(/^#/, '') : null);
+
+  useEffect(() => {
+    setQrImage(order?.qrImage || null);
+    setQrError("");
+  }, [order?.rawId, order?.id]);
 
   // โหลด PromptPay QR ทันทีเมื่อออเดอร์อยู่ในสถานะ PENDING_PAYMENT
   useEffect(() => {
+    let isMounted = true;
     async function fetchQR() {
-      if (order?.status === "PENDING_PAYMENT" && !qrImage && order?.rawId) {
+      if (order?.status === "PENDING_PAYMENT" && !qrImage && targetOrderId) {
+        setQrError("");
         try {
-          const res = await orderApi.getPromptPayQR(order.rawId);
-          if (res?.qr_image_base64) {
+          const res = await orderApi.getPromptPayQR(targetOrderId);
+          if (isMounted && res?.qr_image_base64) {
             setQrImage(res.qr_image_base64);
           }
         } catch (e) {
           console.warn("Could not load QR:", e);
+          if (isMounted) {
+            setQrError(e?.message || "ไม่สามารถโหลด QR Code ได้");
+          }
         }
       }
     }
     fetchQR();
-  }, [order?.status, order?.rawId, qrImage]);
+    return () => { isMounted = false; };
+  }, [order?.status, targetOrderId, qrImage]);
 
   const steps = ["PENDING_ACCEPT", "PENDING_PAYMENT", "PAID", "PREPARING", "READY_FOR_DELIVERY", "IN_DELIVERY", "COMPLETED"];
   const currentStep = order?.status || "PENDING_ACCEPT";
@@ -1896,18 +1909,42 @@ function Delivery({ order, onBack, onChat, onVerifySlip, onCancelOrder, unreadMe
 
             <div style={{
               margin: "0 auto 12px",
-              width: "180px",
-              height: "180px",
+              width: "190px",
+              height: "190px",
               background: "white",
               border: "1px solid #e2e8f0",
-              borderRadius: "10px",
+              borderRadius: "12px",
               display: "flex",
+              flexDirection: "column",
               alignItems: "center",
               justifyContent: "center",
-              overflow: "hidden"
+              overflow: "hidden",
+              padding: "8px"
             }}>
               {qrImage ? (
                 <img src={qrImage} alt="PromptPay QR" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+              ) : qrError ? (
+                <div style={{ fontSize: "12px", color: "#ef4444", padding: "8px", textAlign: "center" }}>
+                  <div>⚠️ {qrError}</div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQrError("");
+                      setQrImage(null);
+                    }}
+                    style={{
+                      marginTop: "6px",
+                      background: "#f1f5f9",
+                      border: "1px solid #cbd5e1",
+                      borderRadius: "6px",
+                      padding: "4px 8px",
+                      fontSize: "11px",
+                      cursor: "pointer"
+                    }}
+                  >
+                    ลองใหม่
+                  </button>
+                </div>
               ) : (
                 <div style={{ fontSize: "12px", color: "#64748b" }}>📱 กำลังโหลด QR Code...</div>
               )}
@@ -1931,21 +1968,30 @@ function Delivery({ order, onBack, onChat, onVerifySlip, onCancelOrder, unreadMe
             </div>
 
             <button
-              onClick={() => onVerifySlip(order, slipFile)}
+              onClick={async () => {
+                if (verifying) return;
+                setVerifying(true);
+                try {
+                  await onVerifySlip(order, slipFile);
+                } finally {
+                  setVerifying(false);
+                }
+              }}
+              disabled={verifying}
               style={{
                 width: "100%",
-                padding: "10px",
-                borderRadius: "8px",
+                padding: "11px",
+                borderRadius: "10px",
                 border: "none",
-                background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                background: verifying ? "#94a3b8" : "linear-gradient(135deg, #10b981 0%, #059669 100%)",
                 color: "white",
                 fontSize: "13px",
                 fontWeight: 700,
-                cursor: "pointer",
+                cursor: verifying ? "not-allowed" : "pointer",
                 boxShadow: "0 2px 8px rgba(16, 185, 129, 0.25)"
               }}
             >
-              📤 แนบสลิป / ตรวจสอบสลิป (Verify Slip)
+              {verifying ? "⏳ กำลังตรวจสอบสลิป..." : "📤 แนบสลิป / ตรวจสอบสลิป (Verify Slip)"}
             </button>
           </div>
         )}

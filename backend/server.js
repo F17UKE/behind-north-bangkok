@@ -43,7 +43,7 @@ app.use('/api/auth', authLimiter, authRoutes); // จำกัดความถ
 app.use('/api/users', userRoutes);
 app.use('/api/merchants', merchantRoutes);
 app.use('/api/orders', orderRoutes);
-app.use('/api/orders', paymentLimiter, paymentRoutes); // จำกัดความถี่การสร้าง QR และตรวจสลิป
+app.use('/api/orders', paymentRoutes); // จำกัดความถี่การสร้าง QR และตรวจสลิป
 app.use('/api/merchants/kds', kdsRoutes);
 app.use('/api/orders', chatRoutes);
 app.use('/api/menus', menuRoutes);

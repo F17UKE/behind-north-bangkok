@@ -27,7 +27,7 @@ const checkAndCancelTimedOutOrders = async (io) => {
         const expiredPendingPaymentOrders = await knex('ORDERS')
             .where('status', ORDER_STATES.PENDING_PAYMENT)
             .where(function() {
-                this.where('created_at', '<', paymentCutoff);
+                this.whereRaw('COALESCE(updated_at, created_at) < ?', [paymentCutoff]);
             })
             .select('id', 'merchant_id', 'customer_id', 'order_code');
 
