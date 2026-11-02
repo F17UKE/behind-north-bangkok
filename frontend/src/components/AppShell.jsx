@@ -18,8 +18,30 @@ export function BottomNav({ items, active, onChange, tone = "orange" }) {
   return (
     <nav className={`bottom-nav ${tone}`}>
       {items.map((item) => (
-        <button key={item.key} className={active === item.key ? "active" : ""} onClick={() => onChange(item.key)}>
-          <span>{item.icon}</span><small>{item.label}</small>
+        <button key={item.key} className={active === item.key ? "active" : ""} onClick={() => onChange(item.key)} style={{ position: "relative" }}>
+          <span style={{ position: "relative", display: "inline-block" }}>
+            {item.icon}
+            {Number(item.badge) > 0 && (
+              <span style={{
+                position: "absolute",
+                top: "-5px",
+                right: "-12px",
+                background: "#ef4444",
+                color: "#ffffff",
+                borderRadius: "10px",
+                padding: "1px 5px",
+                fontSize: "10px",
+                fontWeight: 800,
+                lineHeight: "12px",
+                minWidth: "16px",
+                textAlign: "center",
+                boxShadow: "0 2px 5px rgba(239, 68, 68, 0.45)"
+              }}>
+                {item.badge}
+              </span>
+            )}
+          </span>
+          <small>{item.label}</small>
         </button>
       ))}
     </nav>

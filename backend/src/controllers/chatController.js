@@ -192,6 +192,7 @@ exports.sendMessage = async (req, res) => {
         role: senderSubRole || (isMerchantSender ? 'STORE' : 'CUSTOMER')
       };
       io.to(`order_${realOrderId}`).emit('new_message', messagePayload);
+      io.to(`order_${realOrderId}`).emit('NEW_CHAT_MESSAGE', messagePayload);
       // ส่งการแจ้งเตือนเฉพาะผู้รับ (ไม่ส่งเตือนกลับไปยังผู้ที่เพิ่งพิมพ์ข้อความ)
       if (access.order?.merchant_id && req.user.role !== 'MERCHANT') {
         io.to(`merchant_${access.order.merchant_id}`).emit('NEW_CHAT_MESSAGE', messagePayload);

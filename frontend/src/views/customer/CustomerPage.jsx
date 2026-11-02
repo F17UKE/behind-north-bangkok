@@ -87,6 +87,8 @@ export default function CustomerPage() {
   const [showDormPicker, setShowDormPicker] = useState(false);
   const [chatMessages, setChatMessages] = useState([]);
   const [unreadChatCount, setUnreadChatCount] = useState(0);
+  const [unreadByOrder, setUnreadByOrder] = useState({});
+  const [activeChatNotice, setActiveChatNotice] = useState(null);
 
   const [pendingReturnScreen, setPendingReturnScreen] = useState(null);
   const [activeCheckoutStore, setActiveCheckoutStore] = useState(null);
@@ -574,10 +576,24 @@ export default function CustomerPage() {
     const socket = getSocket("CUSTOMER");
     if (!socket) return;
 
-    const user = authApi.getCurrentUser("CUSTOMER");
-    if (user?.id) {
-      socket.emit("join_customer_room", { customer_id: user.id });
-    }
+    const joinAllCustomerRooms = () => {
+      const user = authApi.getCurrentUser("CUSTOMER");
+      if (user?.id) {
+        socket.emit("join_customer_room", { customer_id: user.id });
+      }
+      orders.forEach(o => {
+        const rid = o.rawId || Number(String(o.id).replace(/\D/g, ""));
+        if (rid) {
+          socket.emit("join_order_room", { orderId: Number(rid), order_id: Number(rid) });
+        }
+      });
+      if (selectedOrder?.rawId) {
+        socket.emit("join_order_room", { orderId: Number(selectedOrder.rawId), order_id: Number(selectedOrder.rawId) });
+      }
+    };
+
+    joinAllCustomerRooms();
+    socket.on("connect", joinAllCustomerRooms);
 
     // ฟังอัปเดตสถานะออเดอร์ Real-time
     const handleStatus = (payload) => {
@@ -623,25 +639,42 @@ export default function CustomerPage() {
       });
     };
 
-    // ฟังข้อความแชทใหม่ Real-time
+    // ฟังข้อความแชทใหม่ Real-time (รองรับทั้งจากร้านค้า และ ไรเดอร์)
     const handleNewChat = (payload) => {
-      console.log("💬 [Customer Socket] NEW_CHAT_MESSAGE:", payload);
+      console.log("💬 [Customer Socket] NEW_CHAT_MESSAGE received:", payload);
       // ตรวจสอบว่าไม่ใช่ข้อความที่ตนเอง (Customer) เป็นคนส่ง
-      if (!payload.is_merchant_sender || payload.role === 'CUSTOMER' || payload.sender_sub_role === 'CUSTOMER') {
+      if (payload.role === 'CUSTOMER' || payload.sender_sub_role === 'CUSTOMER' || payload.from === 'me') {
         return;
       }
-      // หากกำลังอยู่ในหน้าแชท ไม่ต้องแสดง popup แจ้งเตือนและไม่ต้องนับ unread
-      if (screenRef.current === "chat") {
+
+      const ordId = Number(payload.order_id || payload.orderId);
+      // หากกำลังอยู่ในหน้าแชทของออเดอร์นั้นอยู่แล้ว ไม่ต้องแสดง popup แจ้งเตือนซ้ำ
+      if (screenRef.current === "chat" && (selectedOrder?.rawId === ordId || !ordId)) {
         return;
       }
+
       playOrderChime();
       setUnreadChatCount(c => c + 1);
+      if (ordId) {
+        setUnreadByOrder(prev => ({ ...prev, [ordId]: (prev[ordId] || 0) + 1 }));
+      }
 
       // ระบุว่าข้อความมาจากร้านค้า หรือ ไรเดอร์
       const senderTitle = payload.sender_sub_role === "RIDER" ? "ไรเดอร์" : "ร้านค้า";
       const messagePreview = payload.content_text || payload.contentText || "";
-      setApiNotice(`💬 มีข้อความใหม่จาก${senderTitle}: ${messagePreview}`);
-      setTimeout(() => setApiNotice(""), 4500);
+      const displayCode = payload.order_code 
+        ? (payload.order_code.startsWith("#") ? payload.order_code : `#${payload.order_code}`)
+        : (ordId ? `#ORD${String(ordId).padStart(3, "0")}` : "");
+
+      setActiveChatNotice({
+        orderId: ordId,
+        orderCode: displayCode,
+        sender: senderTitle,
+        text: messagePreview
+      });
+      setTimeout(() => setActiveChatNotice(null), 7000);
+      setApiNotice(`💬 ข้อความใหม่จาก${senderTitle} (${displayCode}): ${messagePreview}`);
+      setTimeout(() => setApiNotice(""), 6000);
     };
 
     const handleDeliveryFeeUpdate = (payload) => {
@@ -683,12 +716,13 @@ export default function CustomerPage() {
     }
 
     return () => {
+      socket.off("connect", joinAllCustomerRooms);
       socket.off("ORDER_STATUS_UPDATED", handleStatus);
       socket.off("NEW_CHAT_MESSAGE", handleNewChat);
       socket.off("DELIVERY_FEE_UPDATED", handleDeliveryFeeUpdate);
       socket.off("MERCHANT_PROFILE_UPDATED", handleMerchantProfileUpdate);
     };
-  }, []);
+  }, [orders, selectedOrder?.rawId]);
 
   // Polling fallback เมื่อออเดอร์อยู่ในสถานะ PENDING_ACCEPT (รอร้านรับ)
   useEffect(() => {
@@ -774,6 +808,97 @@ export default function CustomerPage() {
   return (
     <MobileShell>
       <div key={screen} className="mobile-page customer-page-shell screen-enter">
+        {activeChatNotice && (
+          <div
+            style={{
+              position: "fixed",
+              top: "14px",
+              left: "50%",
+              transform: "translateX(-50%)",
+              zIndex: 999999,
+              background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
+              color: "#ffffff",
+              borderRadius: "16px",
+              padding: "12px 16px",
+              boxShadow: "0 14px 35px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.15)",
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              maxWidth: "92vw",
+              width: "360px",
+              boxSizing: "border-box",
+              backdropFilter: "blur(12px)"
+            }}
+          >
+            <div style={{
+              width: "38px",
+              height: "38px",
+              borderRadius: "10px",
+              background: activeChatNotice.sender === "ไรเดอร์" ? "#fef3c7" : "#ffedd5",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: "20px",
+              flexShrink: 0
+            }}>
+              {activeChatNotice.sender === "ไรเดอร์" ? "🛵" : "🏪"}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "2px" }}>
+                <span style={{ fontSize: "12px", fontWeight: 700, color: "#fb923c" }}>
+                  {activeChatNotice.sender}
+                </span>
+                <span style={{ fontSize: "11px", color: "#94a3b8" }}>
+                  {activeChatNotice.orderCode}
+                </span>
+              </div>
+              <div style={{ fontSize: "13px", fontWeight: 600, color: "#f8fafc", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {activeChatNotice.text}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const target = orders.find(o => o.rawId === activeChatNotice.orderId || o.order_code === activeChatNotice.orderCode || o.id === activeChatNotice.orderCode) || selectedOrder;
+                if (target) setSelectedOrder(target);
+                if (activeChatNotice.orderId) {
+                  setUnreadByOrder(prev => ({ ...prev, [activeChatNotice.orderId]: 0 }));
+                }
+                setUnreadChatCount(0);
+                setScreen("chat");
+                setActiveChatNotice(null);
+              }}
+              style={{
+                background: "#ea580c",
+                color: "#ffffff",
+                border: "none",
+                borderRadius: "8px",
+                padding: "7px 12px",
+                fontSize: "12px",
+                fontWeight: 700,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+                flexShrink: 0
+              }}
+            >
+              เปิดแชท
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveChatNotice(null)}
+              style={{
+                background: "transparent",
+                color: "#94a3b8",
+                border: "none",
+                fontSize: "16px",
+                cursor: "pointer",
+                padding: "0 2px"
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        )}
         {apiNotice && (
           <aside
             role="status"
@@ -895,8 +1020,33 @@ export default function CustomerPage() {
             onPlace={() => placeOrder(activeCheckoutStore)}
           />
         )}
-        {screen === "recent" && <Recent orders={orders} onOpen={(order) => { setSelectedOrder(order); setScreen("delivery"); }} onHome={() => setScreen("home")} />}
-        {screen === "delivery" && <Delivery order={selectedOrder} onBack={() => setScreen("recent")} onChat={() => { setUnreadChatCount(0); setScreen("chat"); }} onVerifySlip={(ord, slip) => verifySlip(ord, slip)} onCancelOrder={(ord) => handleCancelOrder(ord)} unreadMessages={unreadChatCount} />}
+        {screen === "recent" && (
+          <Recent
+            orders={orders}
+            unreadByOrder={unreadByOrder}
+            onOpen={(order) => {
+              setSelectedOrder(order);
+              setScreen("delivery");
+            }}
+            onHome={() => setScreen("home")}
+          />
+        )}
+        {screen === "delivery" && (
+          <Delivery
+            order={selectedOrder}
+            onBack={() => setScreen("recent")}
+            onChat={() => {
+              if (selectedOrder?.rawId) {
+                setUnreadByOrder(prev => ({ ...prev, [selectedOrder.rawId]: 0 }));
+              }
+              setUnreadChatCount(0);
+              setScreen("chat");
+            }}
+            onVerifySlip={(ord, slip) => verifySlip(ord, slip)}
+            onCancelOrder={(ord) => handleCancelOrder(ord)}
+            unreadMessages={unreadByOrder[selectedOrder?.rawId] || unreadChatCount}
+          />
+        )}
         {screen === "profile" && (
           <Profile
             profile={profile}
@@ -988,7 +1138,12 @@ export default function CustomerPage() {
             order={selectedOrder}
             storeName={selectedOrder?.store}
             onBack={() => setScreen("delivery")}
-            onRead={() => setUnreadChatCount(0)}
+            onRead={() => {
+              if (selectedOrder?.rawId) {
+                setUnreadByOrder(prev => ({ ...prev, [selectedOrder.rawId]: 0 }));
+              }
+              setUnreadChatCount(0);
+            }}
           />
         )}
         {screen === "login" && (
@@ -1099,9 +1254,14 @@ export default function CustomerPage() {
           onChange={nav}
           items={[
             { key: "home", label: "หน้าแรก", icon: "⌂" },
-            { key: "order", label: unreadChatCount > 0 ? `ออเดอร์ (${unreadChatCount})` : "ออเดอร์", icon: "▣" },
+            { 
+              key: "order", 
+              label: "ออเดอร์", 
+              icon: "▣", 
+              badge: unreadChatCount 
+            },
             { key: "profile", label: "โปรไฟล์", icon: "♙" },
-            { key: "cart", label: cartCount ? `ตะกร้า (${cartCount})` : "ตะกร้า", icon: "🛒" }
+            { key: "cart", label: "ตะกร้า", icon: "🛒", badge: cartCount > 0 ? cartCount : 0 }
           ]}
         />
       )}
@@ -1927,7 +2087,7 @@ function PlaceOrder({ cart, subtotal, deliveryFee, total, deliveryMethod = "DELI
   );
 }
 
-function Recent({ orders, onOpen, onHome }) {
+function Recent({ orders, unreadByOrder = {}, onOpen, onHome }) {
   return (
     <div style={{ paddingBottom: "140px" }}>
       <TopBar title="ประวัติการสั่งซื้อ" subtitle="Recent Orders" onBack={onHome} />
@@ -1988,6 +2148,22 @@ function Recent({ orders, onOpen, onHome }) {
                     }}>
                       {order.order_code || order.id}
                     </span>
+                    {(unreadByOrder[order.rawId] > 0 || unreadByOrder[Number(String(order.id).replace(/\D/g, ""))] > 0) && (
+                      <span style={{
+                        background: "#ef4444",
+                        color: "#ffffff",
+                        padding: "1px 6px",
+                        borderRadius: "10px",
+                        fontSize: "10px",
+                        fontWeight: 800,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "2px",
+                        boxShadow: "0 2px 4px rgba(239, 68, 68, 0.35)"
+                      }}>
+                        💬 ข้อความใหม่
+                      </span>
+                    )}
                     <b style={{ fontSize: "14px", color: "#1e293b", textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
                       {order.store}
                     </b>

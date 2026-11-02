@@ -178,20 +178,20 @@ module.exports = (io) => {
                     role: senderSubRole || (isMerchantSender ? 'STORE' : 'CUSTOMER')
                 };
                 io.to(roomName).emit('new_message', msgPayload);
+                io.to(roomName).emit('NEW_CHAT_MESSAGE', msgPayload);
 
                 try {
                     const senderRole = socket.user?.role || (isMerchantSender ? (senderSubRole === 'RIDER' ? 'RIDER' : 'MERCHANT') : 'CUSTOMER');
                     knex('ORDERS').where('id', orderId).first().then(orderRecord => {
                         if (orderRecord) {
                             if (orderRecord.merchant_id && senderRole !== 'MERCHANT') {
-                                io.to(merchant_).emit('NEW_CHAT_MESSAGE', msgPayload);
+                                io.to(`merchant_${orderRecord.merchant_id}`).emit('NEW_CHAT_MESSAGE', msgPayload);
                             }
                             if (orderRecord.customer_id && senderRole !== 'CUSTOMER') {
-                                io.to(customer_).emit('NEW_CHAT_MESSAGE', msgPayload);
+                                io.to(`customer_${orderRecord.customer_id}`).emit('NEW_CHAT_MESSAGE', msgPayload);
                             }
                             if (orderRecord.rider_id && senderRole !== 'RIDER') {
-                                io.to(
-ider_).emit('NEW_CHAT_MESSAGE', msgPayload);
+                                io.to(`rider_${orderRecord.rider_id}`).emit('NEW_CHAT_MESSAGE', msgPayload);
                             }
                         }
                     }).catch(() => {});
