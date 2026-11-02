@@ -47,6 +47,15 @@ export default function MerchantPage() {
     if (logged) {
       const merchantUser = authApi.getCurrentUser("MERCHANT");
       setCurrentMerchant(merchantUser);
+      merchantApi.getStoreProfile().then(prof => {
+        if (prof) {
+          const merged = { ...merchantUser, ...prof };
+          setCurrentMerchant(merged);
+          try {
+            localStorage.setItem("merchant_user", JSON.stringify(merged));
+          } catch (e) {}
+        }
+      }).catch(() => null);
       loadMerchantOrders();
       loadUnreadCounts();
       initSocket(merchantUser);
@@ -418,6 +427,15 @@ export default function MerchantPage() {
             query={query} 
             setQuery={setQuery} 
             merchant={currentMerchant}
+            onUpdateMerchant={(updated) => {
+              const merged = { ...currentMerchant, ...updated };
+              setCurrentMerchant(merged);
+              try {
+                localStorage.setItem("merchant_user", JSON.stringify(merged));
+              } catch (e) {}
+              setStatusNotice("✅ บันทึกข้อมูลร้านค้าและพร้อมเพย์เรียบร้อยแล้ว!");
+              setTimeout(() => setStatusNotice(""), 4000);
+            }}
             onLogout={handleLogout}
           />
         )}
@@ -455,6 +473,7 @@ export default function MerchantPage() {
             orders={orders} 
             deliveryFee={deliveryFee} 
             setDeliveryFee={setDeliveryFee} 
+            loadMerchantOrders={loadMerchantOrders}
             onBack={() => setScreen("home")} 
             onOpenChat={(ord) => {
               setSelectedChatOrder(ord);
@@ -490,7 +509,53 @@ export default function MerchantPage() {
   );
 }
 
-function MerchantHome({ orders, go, query, setQuery, merchant, onLogout }) {
+function MerchantHome({ orders, go, query, setQuery, merchant, onUpdateMerchant, onLogout }) {
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editStoreName, setEditStoreName] = useState(merchant?.store_name || "");
+  const [editPromptPay, setEditPromptPay] = useState(merchant?.promptpay_id || "");
+  const [editLocation, setEditLocation] = useState(merchant?.location || "");
+  const [editIsOpen, setEditIsOpen] = useState(merchant?.is_open !== false);
+  const [savingProfile, setSavingProfile] = useState(false);
+
+  useEffect(() => {
+    if (merchant) {
+      setEditStoreName(merchant.store_name || "");
+      setEditPromptPay(merchant.promptpay_id || "");
+      setEditLocation(merchant.location || "");
+      setEditIsOpen(merchant.is_open !== false);
+    }
+  }, [merchant]);
+
+  async function handleSaveStoreProfile(e) {
+    e.preventDefault();
+    if (!editStoreName.trim()) {
+      alert("กรุณาระบุชื่อร้านค้า");
+      return;
+    }
+    setSavingProfile(true);
+    try {
+      const updated = await merchantApi.updateStoreProfile({
+        store_name: editStoreName.trim(),
+        promptpay_id: editPromptPay.trim(),
+        location: editLocation.trim(),
+        is_open: editIsOpen
+      });
+      if (onUpdateMerchant) {
+        onUpdateMerchant(updated || {
+          store_name: editStoreName.trim(),
+          promptpay_id: editPromptPay.trim(),
+          location: editLocation.trim(),
+          is_open: editIsOpen
+        });
+      }
+      setShowEditModal(false);
+    } catch (err) {
+      alert("บันทึกข้อมูลร้านค้าไม่สำเร็จ: " + (err?.message || "เกิดข้อผิดพลาด"));
+    } finally {
+      setSavingProfile(false);
+    }
+  }
+
   const storeTitle = merchant?.store_name || "ร้านอาหารหลัง มจพ.";
   const locationDesc = merchant?.location || "หลังมอ ซอย 11 · เปิดรับออเดอร์ (Real-time เชื่อมต่อแล้ว)";
 
@@ -503,8 +568,8 @@ function MerchantHome({ orders, go, query, setQuery, merchant, onLogout }) {
     <>
       <div className="merchant-profile">
         <div className="avatar peach">🏪</div>
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
             <b>{storeTitle}</b>
             {merchant?.is_approved ? (
               <span style={{ background: "#dcfce7", color: "#15803d", padding: "2px 8px", borderRadius: "6px", fontSize: "10.5px", fontWeight: 700 }}>อนุมัติแล้ว</span>
@@ -512,9 +577,32 @@ function MerchantHome({ orders, go, query, setQuery, merchant, onLogout }) {
               <span style={{ background: "#fef3c7", color: "#b45309", padding: "2px 8px", borderRadius: "6px", fontSize: "10.5px", fontWeight: 700 }}>รอแอดมินอนุมัติ</span>
             )}
           </div>
-          <small>{locationDesc}</small>
+          <small style={{ display: "block" }}>{locationDesc}</small>
+          <small style={{ display: "block", color: "#059669", fontWeight: 700, marginTop: "2px" }}>
+            💳 พร้อมเพย์: {merchant?.promptpay_id || "ยังไม่ระบุ (กดแก้ไขเพื่อตั้งค่า)"}
+          </small>
         </div>
-        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+          <button
+            onClick={() => setShowEditModal(true)}
+            style={{
+              background: "#eff6ff",
+              color: "#1d4ed8",
+              border: "1px solid #bfdbfe",
+              borderRadius: "8px",
+              padding: "6px 12px",
+              fontSize: "12px",
+              fontWeight: 700,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: "4px",
+              whiteSpace: "nowrap"
+            }}
+            title="แก้ไขชื่อร้านค้าและเบอร์พร้อมเพย์"
+          >
+            ⚙️ แก้ไขข้อมูลร้าน
+          </button>
           <button 
             onClick={() => go("orders")} 
             style={{
@@ -557,6 +645,171 @@ function MerchantHome({ orders, go, query, setQuery, merchant, onLogout }) {
         </div>
       </div>
 
+      {/* Modal แก้ไขข้อมูลร้านค้า & พร้อมเพย์ */}
+      {showEditModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.55)",
+            zIndex: 9999,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "16px"
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowEditModal(false);
+          }}
+        >
+          <div
+            style={{
+              background: "white",
+              borderRadius: "18px",
+              width: "100%",
+              maxWidth: "420px",
+              padding: "20px",
+              boxShadow: "0 20px 40px rgba(0,0,0,0.2)"
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
+              <div>
+                <b style={{ fontSize: "17px", color: "#0f172a" }}>⚙️ แก้ไขข้อมูลร้านค้า</b>
+                <small style={{ display: "block", color: "#64748b", fontSize: "12px" }}>อัปเดตชื่อร้าน พร้อมเพย์รับเงิน และสถานที่ตั้ง</small>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowEditModal(false)}
+                style={{
+                  background: "#f1f5f9",
+                  border: "none",
+                  borderRadius: "50%",
+                  width: "30px",
+                  height: "30px",
+                  cursor: "pointer",
+                  fontSize: "14px",
+                  color: "#475569"
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveStoreProfile} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              <div>
+                <label style={{ display: "block", fontSize: "12.5px", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>
+                  🏪 ชื่อร้านค้า *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editStoreName}
+                  onChange={(e) => setEditStoreName(e.target.value)}
+                  placeholder="เช่น ตามสั่ง by เชฟเจนนี่"
+                  style={{
+                    width: "100%",
+                    padding: "10px 12px",
+                    borderRadius: "10px",
+                    border: "1px solid #cbd5e1",
+                    fontSize: "14px"
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: "12.5px", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>
+                  💳 เบอร์โทรศัพท์ / เลขพร้อมเพย์รับเงิน (PromptPay ID) *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editPromptPay}
+                  onChange={(e) => setEditPromptPay(e.target.value)}
+                  placeholder="เบอร์โทร 10 หลัก หรือเลขบัตรประชาชน 13 หลัก"
+                  style={{
+                    width: "100%",
+                    padding: "10px 12px",
+                    borderRadius: "10px",
+                    border: "1px solid #cbd5e1",
+                    fontSize: "14px"
+                  }}
+                />
+                <small style={{ color: "#64748b", fontSize: "11px" }}>ใช้สำหรับสร้าง QR Code ให้ลูกค้าสแกนชำระเงินอัตโนมัติ</small>
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: "12.5px", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>
+                  📍 ที่ตั้งร้านค้า / ซอย
+                </label>
+                <input
+                  type="text"
+                  value={editLocation}
+                  onChange={(e) => setEditLocation(e.target.value)}
+                  placeholder="เช่น หลังมอ มจพ. ซอย 11"
+                  style={{
+                    width: "100%",
+                    padding: "10px 12px",
+                    borderRadius: "10px",
+                    border: "1px solid #cbd5e1",
+                    fontSize: "14px"
+                  }}
+                />
+              </div>
+
+              <label style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 12px", background: "#f8fafc", borderRadius: "10px", border: "1px solid #e2e8f0", cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={editIsOpen}
+                  onChange={(e) => setEditIsOpen(e.target.checked)}
+                  style={{ width: "16px", height: "16px" }}
+                />
+                <span style={{ fontSize: "13px", fontWeight: 600, color: "#1e293b" }}>
+                  เปิดรับออเดอร์ (แสดงร้านในหน้าลูกค้า)
+                </span>
+              </label>
+
+              <div style={{ display: "flex", gap: "8px", marginTop: "6px" }}>
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(false)}
+                  style={{
+                    flex: 1,
+                    padding: "10px",
+                    borderRadius: "10px",
+                    border: "1px solid #cbd5e1",
+                    background: "white",
+                    color: "#475569",
+                    fontWeight: 700,
+                    fontSize: "13px",
+                    cursor: "pointer"
+                  }}
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingProfile}
+                  style={{
+                    flex: 1.5,
+                    padding: "10px",
+                    borderRadius: "10px",
+                    border: "none",
+                    background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                    color: "white",
+                    fontWeight: 700,
+                    fontSize: "13px",
+                    cursor: savingProfile ? "not-allowed" : "pointer",
+                    boxShadow: "0 4px 12px rgba(5, 150, 105, 0.25)"
+                  }}
+                >
+                  {savingProfile ? "กำลังบันทึก..." : "💾 บันทึกข้อมูลร้าน"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       <SearchBar value={query} onChange={setQuery} placeholder="ค้นหาเลขออเดอร์ หรือชื่อลูกค้า..." />
       
       <div className="merchant-quick">
@@ -566,6 +819,7 @@ function MerchantHome({ orders, go, query, setQuery, merchant, onLogout }) {
         <button onClick={() => go("orders")}>ทั้งหมด ({orders.length})</button>
         <button onClick={() => go("orders")}>รอรับ <span>{orders.filter(o => ["PENDING_ACCEPT", "PENDING_PAYMENT"].includes(o.status)).length}</span></button>
         <button onClick={() => go("menus")} style={{ background: "#ecfdf5", color: "#065f46", borderColor: "#a7f3d0" }}>🍲 จัดการเมนู</button>
+        <button onClick={() => setShowEditModal(true)} style={{ background: "#eff6ff", color: "#1d4ed8", borderColor: "#bfdbfe", fontWeight: 700 }}>⚙️ ตั้งค่าร้าน / พร้อมเพย์</button>
       </div>
 
       <div className="merchant-stats">
@@ -777,6 +1031,7 @@ function MerchantOrders({ orders, allOrders = [], filter, setFilter, query, setQ
 
 function MerchantDelivery({ orders, deliveryFee, setDeliveryFee, onBack, loadMerchantOrders, onOpenChat }) {
   const [tab, setTab] = useState("dispatch"); // "dispatch" | "soi_fees" | "riders"
+  const [statusFilter, setStatusFilter] = useState("ALL"); // "ALL" | "READY_FOR_DELIVERY" | "IN_DELIVERY" | "COMPLETED"
   const [riders, setRiders] = useState([]);
   const [sois, setSois] = useState([]);
   const [soiFees, setSoiFees] = useState({});
@@ -927,6 +1182,13 @@ function MerchantDelivery({ orders, deliveryFee, setDeliveryFee, onBack, loadMer
   const deliveryOrders = orders.filter((o) =>
     ["READY_FOR_DELIVERY", "IN_DELIVERY", "COMPLETED"].includes(o.status)
   );
+  const readyCount = deliveryOrders.filter(o => o.status === "READY_FOR_DELIVERY").length;
+  const inDeliveryCount = deliveryOrders.filter(o => o.status === "IN_DELIVERY").length;
+  const completedCount = deliveryOrders.filter(o => o.status === "COMPLETED").length;
+
+  const filteredDeliveryOrders = statusFilter === "ALL"
+    ? deliveryOrders
+    : deliveryOrders.filter(o => o.status === statusFilter);
 
   return (
     <div style={{ paddingBottom: "30px" }}>
@@ -1016,13 +1278,46 @@ function MerchantDelivery({ orders, deliveryFee, setDeliveryFee, onBack, loadMer
       {/* --- TAB 1: งานจัดส่ง & มอบหมายไรเดอร์ --- */}
       {tab === "dispatch" && (
         <div style={{ padding: "0 12px" }}>
-          <div style={{ marginBottom: "12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <b style={{ fontSize: "14px", color: "#334155" }}>รายการออเดอร์ที่พร้อมจัดส่ง / กำลังส่ง</b>
-            <span style={{ fontSize: "12px", color: "#64748b" }}>{deliveryOrders.length} รายการ</span>
+          <div style={{ marginBottom: "10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <b style={{ fontSize: "14px", color: "#334155" }}>รายการออเดอร์จัดส่ง</b>
+            <span style={{ fontSize: "12px", color: "#64748b" }}>{filteredDeliveryOrders.length} รายการ</span>
           </div>
 
-          {deliveryOrders.length > 0 ? (
-            deliveryOrders.map((o) => (
+          {/* ตัวกรองสถานะออเดอร์ในหน้าจัดส่ง */}
+          <div style={{ display: "flex", gap: "6px", marginBottom: "14px", overflowX: "auto", paddingBottom: "4px" }}>
+            {[
+              { key: "ALL", label: `ทั้งหมด (${deliveryOrders.length})` },
+              { key: "READY_FOR_DELIVERY", label: `พร้อมจัดส่ง (${readyCount})` },
+              { key: "IN_DELIVERY", label: `กำลังจัดส่ง (${inDeliveryCount})` },
+              { key: "COMPLETED", label: `จัดส่งสำเร็จ (${completedCount})` }
+            ].map((f) => {
+              const active = statusFilter === f.key;
+              return (
+                <button
+                  key={f.key}
+                  type="button"
+                  onClick={() => setStatusFilter(f.key)}
+                  style={{
+                    padding: "7px 14px",
+                    borderRadius: "20px",
+                    border: active ? "none" : "1px solid #cbd5e1",
+                    background: active ? "#059669" : "#f8fafc",
+                    color: active ? "white" : "#475569",
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                    transition: "all 0.15s"
+                  }}
+                >
+                  {f.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {filteredDeliveryOrders.length > 0 ? (
+            filteredDeliveryOrders.map((o) => (
               <div
                 key={o.id}
                 style={{

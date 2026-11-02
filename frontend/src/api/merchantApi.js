@@ -43,9 +43,9 @@ export const merchantApi = {
     try {
       const res = await api.get(`/merchants/${merchantId}/delivery-fee?dormitory_id=${dormitoryId}`);
       const val = res?.data?.delivery_fee ?? res?.delivery_fee;
-      return (typeof val !== "undefined" && val !== null) ? parseFloat(val) : 10;
+      return (typeof val !== "undefined" && val !== null) ? parseFloat(val) : 0;
     } catch (e) {
-      return 10;
+      return 0;
     }
   },
 
@@ -53,6 +53,11 @@ export const merchantApi = {
   async getStoreProfile() {
     const res = await api.get("/merchant-management/profile", {}, "MERCHANT");
     return res?.data || null;
+  },
+
+  async updateStoreProfile(profileData) {
+    const res = await api.put("/merchant-management/profile", profileData, {}, "MERCHANT");
+    return res?.data || res;
   },
 
   async updateStoreStatus(is_open) {

@@ -82,7 +82,8 @@ export default function CustomerPage() {
   const [dormList, setDormList] = useState(dormitories);
   const [soiList, setSoiList] = useState(sois);
   const [currentDorm, setCurrentDorm] = useState(dormitories[0]);
-  const [currentDeliveryFee, setCurrentDeliveryFee] = useState(10);
+  const [currentDeliveryFee, setCurrentDeliveryFee] = useState(0);
+  const [storeDeliveryFees, setStoreDeliveryFees] = useState({});
   const [showDormPicker, setShowDormPicker] = useState(false);
   const [chatMessages, setChatMessages] = useState([]);
   const [unreadChatCount, setUnreadChatCount] = useState(0);
@@ -279,21 +280,38 @@ export default function CustomerPage() {
   // คำนวณค่าจัดส่งแบบ Real-time ตามร้านและหอพักที่เลือกจริงจาก PostgreSQL
   useEffect(() => {
     async function updateDeliveryFee() {
-      const targetStoreId = cart[0]?.storeId || selectedStore?.id;
       const targetDormId = savedAddress?.dormitory?.id || currentDorm?.id;
-      if (!targetStoreId || !targetDormId) return;
+      if (!targetDormId) return;
 
-      try {
-        const fee = await merchantApi.getDeliveryFee(targetStoreId, targetDormId);
-        if (typeof fee === "number" && !isNaN(fee)) {
-          setCurrentDeliveryFee(fee);
+      const storeIds = new Set();
+      if (selectedStore?.id) storeIds.add(Number(selectedStore.id));
+      cart.forEach(item => {
+        if (item.storeId) storeIds.add(Number(item.storeId));
+      });
+
+      if (storeIds.size === 0) return;
+
+      const nextFees = {};
+      for (const sId of storeIds) {
+        try {
+          const fee = await merchantApi.getDeliveryFee(sId, targetDormId);
+          if (typeof fee === "number" && !isNaN(fee)) {
+            nextFees[sId] = fee;
+          }
+        } catch (err) {
+          console.warn("Could not fetch delivery fee for store:", sId, err);
         }
-      } catch (err) {
-        console.warn("Could not fetch delivery fee:", err);
+      }
+
+      setStoreDeliveryFees(prev => ({ ...prev, ...nextFees }));
+
+      const targetStoreId = Number(cart[0]?.storeId || selectedStore?.id);
+      if (targetStoreId && typeof nextFees[targetStoreId] === "number") {
+        setCurrentDeliveryFee(nextFees[targetStoreId]);
       }
     }
     updateDeliveryFee();
-  }, [selectedStore?.id, currentDorm?.id, savedAddress?.dormitory?.id, cart]);
+  }, [selectedStore?.id, currentDorm?.id, savedAddress?.dormitory?.id, cart, screen]);
 
   const [deliveryMethod, setDeliveryMethod] = useState("DELIVERY"); // "DELIVERY" | "PICKUP"
   const cartCount = cart.reduce((s, x) => s + x.qty, 0);
@@ -440,7 +458,10 @@ export default function CustomerPage() {
     const targetStoreId = targetCheckoutStore?.storeId || itemsToOrder[0]?.storeId || selectedStore?.id || 1;
     const targetStoreName = targetCheckoutStore?.storeName || itemsToOrder[0]?.storeName || selectedStore?.name || "ร้านอาหาร";
     const targetSubtotal = targetCheckoutStore ? targetCheckoutStore.subtotal : itemsToOrder.reduce((s, x) => s + x.price * x.qty, 0);
-    const targetFee = isPickup ? 0 : (targetCheckoutStore ? targetCheckoutStore.deliveryFee : currentDeliveryFee);
+    const resolvedStoreFee = typeof storeDeliveryFees[Number(targetStoreId)] === "number"
+      ? storeDeliveryFees[Number(targetStoreId)]
+      : (targetCheckoutStore && typeof targetCheckoutStore.deliveryFee === "number" ? targetCheckoutStore.deliveryFee : currentDeliveryFee);
+    const targetFee = isPickup ? 0 : resolvedStoreFee;
     const targetTotal = targetSubtotal + targetFee;
 
     const itemsDescription = itemsToOrder.map((x) => `${x.name}${x.selectedAddons?.length ? ` (${x.selectedAddons.map((option) => option.name).join(", ")})` : ""}${x.note ? ` · หมายเหตุ: ${x.note}` : ""} x${x.qty}`);
@@ -590,21 +611,34 @@ export default function CustomerPage() {
 
     const handleDeliveryFeeUpdate = (payload) => {
       console.log("⚡ [Customer Socket] DELIVERY_FEE_UPDATED:", payload);
-      const activeStoreId = cart[0]?.storeId || selectedStore?.id;
-      const activeDormSoiId = savedAddress?.dormitory?.soi_id || currentDorm?.soi_id;
-
-      if (Number(payload.merchant_id) === Number(activeStoreId)) {
-        if (!activeDormSoiId || Number(payload.soi_id) === Number(activeDormSoiId)) {
-          setCurrentDeliveryFee(parseFloat(payload.fee));
-          setApiNotice(`🔔 ร้านค้าปรับค่าส่งของซอยคุณเป็น ฿${payload.fee}`);
-          setTimeout(() => setApiNotice(""), 3500);
-        }
+      const mId = Number(payload.merchant_id);
+      const newFee = parseFloat(payload.fee);
+      if (!isNaN(mId) && !isNaN(newFee)) {
+        setStoreDeliveryFees(prev => ({ ...prev, [mId]: newFee }));
+        setCurrentDeliveryFee(newFee);
+        setActiveCheckoutStore(prev => {
+          if (prev && Number(prev.storeId) === mId) {
+            return {
+              ...prev,
+              deliveryFee: newFee,
+              total: prev.subtotal + newFee
+            };
+          }
+          return prev;
+        });
+        setApiNotice(`🔔 ร้านค้าปรับค่าส่งเป็น ฿${newFee}`);
+        setTimeout(() => setApiNotice(""), 3500);
       }
+    };
+
+    const handleMerchantProfileUpdate = () => {
+      loadRealMerchants();
     };
 
     socket.on("ORDER_STATUS_UPDATED", handleStatus);
     socket.on("NEW_CHAT_MESSAGE", handleNewChat);
     socket.on("DELIVERY_FEE_UPDATED", handleDeliveryFeeUpdate);
+    socket.on("MERCHANT_PROFILE_UPDATED", handleMerchantProfileUpdate);
 
     // โหลด unread count เริ่มต้น
     if (authApi.isLoggedIn("CUSTOMER")) {
@@ -617,6 +651,7 @@ export default function CustomerPage() {
       socket.off("ORDER_STATUS_UPDATED", handleStatus);
       socket.off("NEW_CHAT_MESSAGE", handleNewChat);
       socket.off("DELIVERY_FEE_UPDATED", handleDeliveryFeeUpdate);
+      socket.off("MERCHANT_PROFILE_UPDATED", handleMerchantProfileUpdate);
     };
   }, []);
 
@@ -768,6 +803,7 @@ export default function CustomerPage() {
             cart={cart}
             subtotal={subtotal}
             deliveryFee={deliveryFee}
+            storeDeliveryFees={storeDeliveryFees}
             total={total}
             changeQty={changeQty}
             isLoggedIn={authApi.isLoggedIn("CUSTOMER")}
@@ -805,9 +841,9 @@ export default function CustomerPage() {
             deliveryMethod={deliveryMethod}
             setDeliveryMethod={setDeliveryMethod}
             cart={activeCheckoutStore?.items || cart}
-            subtotal={activeCheckoutStore?.subtotal || subtotal}
-            deliveryFee={deliveryMethod === "PICKUP" ? 0 : (activeCheckoutStore?.deliveryFee || deliveryFee)}
-            total={activeCheckoutStore?.total || total}
+            subtotal={activeCheckoutStore?.subtotal ?? subtotal}
+            deliveryFee={deliveryMethod === "PICKUP" ? 0 : (typeof storeDeliveryFees[Number(activeCheckoutStore?.storeId)] === "number" ? storeDeliveryFees[Number(activeCheckoutStore?.storeId)] : (activeCheckoutStore?.deliveryFee ?? deliveryFee))}
+            total={deliveryMethod === "PICKUP" ? (activeCheckoutStore?.subtotal ?? subtotal) : ((activeCheckoutStore?.subtotal ?? subtotal) + (typeof storeDeliveryFees[Number(activeCheckoutStore?.storeId)] === "number" ? storeDeliveryFees[Number(activeCheckoutStore?.storeId)] : (activeCheckoutStore?.deliveryFee ?? deliveryFee)))}
             storeName={activeCheckoutStore?.storeName || cart[0]?.storeName}
             isLoggedIn={authApi.isLoggedIn("CUSTOMER")}
             hasAddress={hasDeliveryAddress()}
@@ -1321,19 +1357,22 @@ function Summary({ subtotal, delivery, total }) {
   );
 }
 
-function Basket({ cart, subtotal, deliveryFee, total, deliveryMethod = "DELIVERY", setDeliveryMethod, changeQty, onBack, onNext, isLoggedIn, hasAddress, savedAddress, onRequireLogin, onRequireAddress, onCheckoutStore }) {
+function Basket({ cart, subtotal, deliveryFee, storeDeliveryFees = {}, total, deliveryMethod = "DELIVERY", setDeliveryMethod, changeQty, onBack, onNext, isLoggedIn, hasAddress, savedAddress, onRequireLogin, onRequireAddress, onCheckoutStore }) {
   const storesInCart = useMemo(() => {
     const map = new Map();
     cart.forEach(item => {
       const sId = item.storeId || 1;
       const sName = item.storeName || "ร้านอาหาร";
       if (!map.has(sId)) {
+        const sFee = typeof storeDeliveryFees[Number(sId)] === "number"
+          ? storeDeliveryFees[Number(sId)]
+          : (typeof deliveryFee === "number" ? deliveryFee : 0);
         map.set(sId, {
           storeId: sId,
           storeName: sName,
           items: [],
           subtotal: 0,
-          deliveryFee: deliveryMethod === "PICKUP" ? 0 : (deliveryFee || 10),
+          deliveryFee: deliveryMethod === "PICKUP" ? 0 : sFee,
           total: 0
         });
       }
@@ -1348,7 +1387,7 @@ function Basket({ cart, subtotal, deliveryFee, total, deliveryMethod = "DELIVERY
       list.push(group);
     });
     return list;
-  }, [cart, deliveryMethod, deliveryFee]);
+  }, [cart, deliveryMethod, deliveryFee, storeDeliveryFees]);
 
   return (
     <>

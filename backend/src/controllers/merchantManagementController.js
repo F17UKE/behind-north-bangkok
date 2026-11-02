@@ -14,8 +14,14 @@ exports.getProfile = async (req, res) => {
 exports.updateProfile = async (req, res) => {
   try {
     const merchantId = req.user.id;
-    const { store_name, promptpay_id, location, store_image_url } = req.body;
-    const updated = await repo.updateProfile(merchantId, { store_name, promptpay_id, location, store_image_url });
+    const { store_name, promptpay_id, location, store_image_url, is_open, prefix } = req.body;
+    const updated = await repo.updateProfile(merchantId, { store_name, promptpay_id, location, store_image_url, is_open, prefix });
+
+    const io = req.app.get('io');
+    if (io && updated && updated[0]) {
+      io.emit('MERCHANT_PROFILE_UPDATED', updated[0]);
+    }
+
     res.status(200).json({ success: true, data: updated[0] });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });

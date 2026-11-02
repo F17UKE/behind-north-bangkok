@@ -4,16 +4,28 @@ class MerchantManagementRepository {
   // --- 1. Store Profile Management ---
   async getProfile(merchantId) {
     return await db('MERCHANTS')
-      .select('id', 'username', 'store_name', 'promptpay_id', 'prefix', 'is_open', 'location', 'store_image_url')
+      .select('id', 'username', 'store_name', 'promptpay_id', 'prefix', 'is_open', 'location', 'store_image_url', 'is_approved', 'email')
       .where('id', merchantId)
       .first();
   }
 
+  async getMerchantProfile(merchantId) {
+    return await this.getProfile(merchantId);
+  }
+
   async updateProfile(merchantId, profileData) {
+    const cleanData = {};
+    if (profileData.store_name !== undefined) cleanData.store_name = profileData.store_name;
+    if (profileData.promptpay_id !== undefined) cleanData.promptpay_id = profileData.promptpay_id;
+    if (profileData.location !== undefined) cleanData.location = profileData.location;
+    if (profileData.store_image_url !== undefined) cleanData.store_image_url = profileData.store_image_url;
+    if (profileData.is_open !== undefined) cleanData.is_open = profileData.is_open;
+    if (profileData.prefix !== undefined) cleanData.prefix = profileData.prefix;
+
     return await db('MERCHANTS')
       .where('id', merchantId)
-      .update(profileData)
-      .returning(['id', 'store_name', 'promptpay_id', 'location']);
+      .update(cleanData)
+      .returning(['id', 'username', 'store_name', 'promptpay_id', 'prefix', 'is_open', 'location', 'store_image_url', 'is_approved']);
   }
 
   async updateStoreStatus(merchantId, isOpen) {
