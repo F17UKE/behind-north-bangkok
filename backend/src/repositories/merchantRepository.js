@@ -22,14 +22,36 @@ class MerchantRepository {
       .first();
   }
 
-  // 3. ดึงรายการเมนูอาหารทั้งหมดของร้านค้าเฉพาะรายการที่พร้อมขาย (is_available = true)
+  // 3. ดึงรายการเมนูอาหารทั้งหมดของร้านค้าเฉพาะรายการที่พร้อมขาย (is_available = true) พร้อมกลุ่มตัวเลือกจริงจาก DB
   async findMenuItemsByMerchantId(merchantId) {
-    return await db('MENU_ITEMS')
+    const menus = await db('MENU_ITEMS')
       .select('id', 'name', 'description', 'price', 'is_available', 'image_url', 'merchant_id')
       .where({
         merchant_id: merchantId,
         is_available: true,
-      });
+      })
+      .orderBy('id', 'asc');
+
+    const menuIds = menus.map(m => m.id);
+    if (menuIds.length === 0) return [];
+
+    const optionGroups = await db('MENU_OPTION_GROUPS')
+      .whereIn('menu_item_id', menuIds);
+    const groupIds = optionGroups.map(g => g.id);
+
+    const choices = groupIds.length > 0
+      ? await db('MENU_OPTION_CHOICES').whereIn('option_group_id', groupIds)
+      : [];
+
+    const groupsWithChoices = optionGroups.map(group => ({
+      ...group,
+      choices: choices.filter(c => c.option_group_id === group.id)
+    }));
+
+    return menus.map(menu => ({
+      ...menu,
+      option_groups: groupsWithChoices.filter(g => g.menu_item_id === menu.id)
+    }));
   }
 
   // 4. ดึงข้อมูลรายละเอียดเมนูเดี่ยว พร้อมกลุ่มตัวเลือกเสริม (Option Groups) และตัวเลือกย่อย (Option Choices)

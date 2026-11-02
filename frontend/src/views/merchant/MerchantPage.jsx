@@ -279,7 +279,7 @@ export default function MerchantPage() {
         await orderApi.markReadyForDelivery(rawId).catch(() => orderApi.completeEntireOrder(rawId));
         setStatusNotice(`🛵 อัปเดตออเดอร์ ${id} พร้อมจัดส่งแล้ว`);
       } else if (status === "COMPLETED") {
-        await orderApi.completeEntireOrder(rawId);
+        await orderApi.completeOrder(rawId);
         setStatusNotice(`✅ ออเดอร์ ${id} ลูกค้ามารับเรียบร้อยแล้ว (เสร็จสิ้น)`);
       } else if (status === "REJECTED_BY_MERCHANT") {
         await orderApi.rejectOrder(rawId, "ร้านค้าปฏิเสธออเดอร์");

@@ -220,7 +220,8 @@ export default function CustomerPage() {
                   photo: m.image_url || null,
                   emoji: "🍛",
                   storeId: store.id,
-                  storeName: store.store_name
+                  storeName: store.store_name,
+                  option_groups: m.option_groups || []
                 }));
               }
             } catch (me) {
@@ -392,8 +393,12 @@ export default function CustomerPage() {
   }
 
   function openCustomization(item, store) {
-    const inferred = item.customizationType || (store.category?.includes("เครื่องดื่ม") ? "drink" : store.category?.includes("ของหวาน") ? "dessert" : "rice");
-    setCustomItem({ ...item, storeId: store.id, storeName: store.name, customizationType: inferred });
+    setCustomItem({
+      ...item,
+      storeId: store.id,
+      storeName: store.name,
+      option_groups: item.option_groups || []
+    });
     setCustomAddons([]);
     setCustomNote("");
     setCustomQty(1);
@@ -401,9 +406,28 @@ export default function CustomerPage() {
 
   function confirmCustomization() {
     if (!customItem) return;
-    const options = customizationOptions[customItem.customizationType] || customizationOptions.rice;
-    const selected = options.filter((option) => customAddons.includes(option.id));
-    const price = customItem.price + selected.reduce((sum, option) => sum + option.price, 0);
+
+    let selected = [];
+    let extraPrice = 0;
+    const optionGroups = customItem.option_groups || [];
+    if (optionGroups.length > 0) {
+      optionGroups.forEach(grp => {
+        (grp.choices || []).forEach(ch => {
+          if (customAddons.includes(ch.id) || customAddons.includes(String(ch.id))) {
+            const addPrice = parseFloat(ch.extra_price || ch.price || 0);
+            selected.push({
+              id: ch.id,
+              name: ch.name,
+              price: addPrice,
+              group_name: grp.name
+            });
+            extraPrice += addPrice;
+          }
+        });
+      });
+    }
+
+    const price = customItem.price + extraPrice;
     const cartLineId = `${customItem.id}:${customAddons.slice().sort().join(",")}:${customNote.trim()}`;
     addItem({ ...customItem, basePrice: customItem.price, price, selectedAddons: selected, note: customNote.trim(), cartLineId, qty: customQty });
     setCustomItem(null);
@@ -422,7 +446,7 @@ export default function CustomerPage() {
           emoji: "🍛",
           image: m.image_url || null,
           description: m.description || `${m.name} ปรุงสดใหม่`,
-          customizationType: "rice"
+          option_groups: m.option_groups || []
         }));
         setSelectedStore(prev => ({ ...prev, menu: formattedMenu }));
       }
@@ -1075,7 +1099,19 @@ export default function CustomerPage() {
           🛒 {cartCount} · {total} ฿
         </button>
       )}
-      {customItem && <CustomizationModal item={customItem} options={customizationOptions[customItem.customizationType] || customizationOptions.rice} selected={customAddons} setSelected={setCustomAddons} note={customNote} setNote={setCustomNote} qty={customQty} setQty={setCustomQty} onClose={() => setCustomItem(null)} onConfirm={confirmCustomization} />}
+      {customItem && (
+        <CustomizationModal
+          item={customItem}
+          selected={customAddons}
+          setSelected={setCustomAddons}
+          note={customNote}
+          setNote={setCustomNote}
+          qty={customQty}
+          setQty={setCustomQty}
+          onClose={() => setCustomItem(null)}
+          onConfirm={confirmCustomization}
+        />
+      )}
       {showDormPicker && <DormitoryPickerModal dormList={dormList} soiList={soiList} currentDorm={currentDorm} onSelect={(dorm) => { setCurrentDorm(dorm); setShowDormPicker(false); }} onClose={() => setShowDormPicker(false)} />}
     </MobileShell>
   );
@@ -1311,10 +1347,108 @@ function CustomerStore({ store, onBack, onCustomize, onBasket, cartCount }) {
   );
 }
 
-function CustomizationModal({ item, options, selected, setSelected, note, setNote, qty, setQty, onClose, onConfirm }) {
-  const addonsTotal = options.filter((option) => selected.includes(option.id)).reduce((sum, option) => sum + option.price, 0);
-  const toggle = (id) => setSelected((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
-  return <div className="customize-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="customize-dialog" role="dialog" aria-modal="true" aria-labelledby="customize-title"><button className="customize-close" onClick={onClose} aria-label="ปิด">×</button><div className="customize-product">{item.image ? <img src={item.image} alt={item.name} /> : <div style={{ width: "64px", height: "64px", borderRadius: "12px", background: "#fff7ed", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "32px", flexShrink: 0 }}>{item.emoji || "🍲"}</div>}<div><small>ปรับแต่งเมนู</small><h2 id="customize-title">{item.name}</h2><span>฿{item.price}</span></div></div><div className="customize-section-heading"><b>เพิ่มความอร่อย</b><small>เลือกได้หลายรายการ</small></div><div className="customize-options">{options.map((option) => <label className="customize-option" key={option.id}><input type="checkbox" checked={selected.includes(option.id)} onChange={() => toggle(option.id)} /><span>{option.name}</span><b>+฿{option.price}</b></label>)}</div><label className="customize-note"><b>หมายเหตุถึงร้าน</b><textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="เช่น ไม่ใส่ผัก เผ็ดน้อย แยกน้ำซอส" maxLength={180} /><small>{note.length}/180</small></label><div className="customize-footer"><div className="qty customize-qty"><button onClick={() => setQty(Math.max(1, qty - 1))}>−</button><span>{qty}</span><button onClick={() => setQty(qty + 1)}>＋</button></div><button className="primary-btn" onClick={onConfirm}>เพิ่มลงตะกร้า · ฿{(item.price + addonsTotal) * qty}</button></div></section></div>;
+function CustomizationModal({ item, selected, setSelected, note, setNote, qty, setQty, onClose, onConfirm }) {
+  const groups = item.option_groups || [];
+  const allChoices = groups.flatMap(g => g.choices || []);
+  const addonsTotal = allChoices
+    .filter(choice => selected.includes(choice.id) || selected.includes(String(choice.id)))
+    .reduce((sum, choice) => sum + parseFloat(choice.extra_price || choice.price || 0), 0);
+
+  const toggleSingle = (groupId, choiceId) => {
+    const groupChoices = (groups.find(g => g.id === groupId)?.choices || []).map(c => c.id);
+    setSelected(current => [
+      ...current.filter(id => !groupChoices.includes(id) && !groupChoices.includes(Number(id))),
+      choiceId
+    ]);
+  };
+
+  const toggleMultiple = (choiceId) => {
+    setSelected(current =>
+      current.includes(choiceId)
+        ? current.filter(id => id !== choiceId)
+        : [...current, choiceId]
+    );
+  };
+
+  return (
+    <div className="customize-overlay" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <section className="customize-dialog" role="dialog" aria-modal="true" aria-labelledby="customize-title">
+        <button className="customize-close" onClick={onClose} aria-label="ปิด">×</button>
+        <div className="customize-product">
+          {item.image ? (
+            <img src={item.image} alt={item.name} />
+          ) : (
+            <div style={{ width: "64px", height: "64px", borderRadius: "12px", background: "#fff7ed", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "32px", flexShrink: 0 }}>
+              {item.emoji || "🍲"}
+            </div>
+          )}
+          <div>
+            <small>ปรับแต่งเมนู</small>
+            <h2 id="customize-title">{item.name}</h2>
+            <span>฿{item.price}</span>
+          </div>
+        </div>
+
+        {groups.length > 0 ? (
+          groups.map(group => {
+            const isSingle = !group.is_multiple_choice && !group.isMultiple;
+            return (
+              <div key={group.id} style={{ marginBottom: "16px" }}>
+                <div className="customize-section-heading">
+                  <b>{group.name}</b>
+                  <small>{group.is_required ? "จำเป็นต้องเลือก 1 ข้อ" : isSingle ? "เลือกได้ 1 รายการ" : "เลือกได้หลายรายการ"}</small>
+                </div>
+                <div className="customize-options">
+                  {(group.choices || []).map(choice => {
+                    const isChecked = selected.includes(choice.id) || selected.includes(String(choice.id));
+                    const extra = parseFloat(choice.extra_price || choice.price || 0);
+                    return (
+                      <label className="customize-option" key={choice.id}>
+                        <input
+                          type={isSingle ? "radio" : "checkbox"}
+                          name={`group_${group.id}`}
+                          checked={isChecked}
+                          onChange={() => isSingle ? toggleSingle(group.id, choice.id) : toggleMultiple(choice.id)}
+                        />
+                        <span>{choice.name}</span>
+                        <b>{extra > 0 ? `+฿${extra}` : "ฟรี"}</b>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })
+        ) : (
+          <div style={{ padding: "16px", background: "#f8fafc", borderRadius: "10px", margin: "14px 0", textAlign: "center", color: "#64748b", fontSize: "14px" }}>
+            <span>ℹ️ เมนูนี้ไม่มีตัวเลือกเสริม</span>
+          </div>
+        )}
+
+        <label className="customize-note">
+          <b>หมายเหตุถึงร้าน</b>
+          <textarea
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            placeholder="เช่น ไม่ใส่ผัก เผ็ดน้อย แยกน้ำซอส"
+            maxLength={180}
+          />
+          <small>{note.length}/180</small>
+        </label>
+
+        <div className="customize-footer">
+          <div className="qty customize-qty">
+            <button onClick={() => setQty(Math.max(1, qty - 1))}>−</button>
+            <span>{qty}</span>
+            <button onClick={() => setQty(qty + 1)}>＋</button>
+          </div>
+          <button className="primary-btn" onClick={onConfirm}>
+            เพิ่มลงตะกร้า · ฿{(item.price + addonsTotal) * qty}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
 }
 
 function CartStoreThumb({ storeId }) {

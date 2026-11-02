@@ -6,14 +6,19 @@ const emitOrderStatus = (req, orderId, status, extra = {}, merchantId = null, cu
   if (io) {
     const payload = {
       order_id: Number(orderId),
+      orderId: Number(orderId),
       status,
       updated_by: req.user?.role,
       updated_at: new Date(),
       ...extra
     };
     io.to(`order_${orderId}`).emit('ORDER_STATUS_UPDATED', payload);
-    if (merchantId) io.to(`merchant_${merchantId}`).emit('ORDER_STATUS_UPDATED', payload);
+    if (merchantId) {
+      io.to(`merchant_${merchantId}`).emit('ORDER_STATUS_UPDATED', payload);
+      io.to(`merchant_${merchantId}_kds`).emit('ORDER_STATUS_UPDATED', payload);
+    }
     if (customerId) io.to(`customer_${customerId}`).emit('ORDER_STATUS_UPDATED', payload);
+    io.emit('ORDER_STATUS_UPDATED', payload);
   }
 };
 
@@ -209,17 +214,18 @@ exports.selfDeliver = async (req, res) => {
   }
 };
 
-// ร้านค้าทำรายการจัดส่งสำเร็จ (complete)
+// ร้านค้าทำรายการจัดส่งสำเร็จ (complete) เช่น ลูกค้ามารับอาหารเองที่หน้าร้าน
 exports.completeOrder = async (req, res) => {
   try {
     const { order_id } = req.params;
     const order = await repo.getOrderById(order_id);
 
     if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
-    if (order.merchant_id !== req.user.id) return res.status(403).json({ success: false, message: 'Unauthorized' });
+    if (Number(order.merchant_id) !== Number(req.user.id)) return res.status(403).json({ success: false, message: 'Unauthorized' });
 
-    const updated = await repo.updateOrderStatus(order_id, 'COMPLETED');
-    emitOrderStatus(req, order_id, 'COMPLETED', {}, order.merchant_id, order.customer_id);
+    const numericId = order.id;
+    const updated = await repo.updateOrderStatus(numericId, 'COMPLETED');
+    emitOrderStatus(req, numericId, 'COMPLETED', { order_code: order.order_code }, order.merchant_id, order.customer_id);
 
     res.status(200).json({ success: true, message: 'Order completed', data: updated[0] });
   } catch (error) {
