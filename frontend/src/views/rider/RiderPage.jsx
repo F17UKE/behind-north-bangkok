@@ -457,22 +457,23 @@ function RiderChatModal({ order, onClose, onRead }) {
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const orderId = order?.rawId || order?.id;
 
   useEffect(() => {
-    if (!order?.id) return;
+    if (!orderId) return;
     let isMounted = true;
 
     async function loadChat() {
       try {
-        const res = await orderApi.getChatHistory(order.id, "RIDER");
+        const res = await orderApi.getChatHistory(orderId, "RIDER");
         const list = Array.isArray(res) ? res : (res?.data || res?.messages || []);
         if (isMounted) {
           setMessages(list);
           if (list.length > 0) {
             const last = list[list.length - 1];
             if (last?.id) {
-              await orderApi.markAsRead(order.id, last.id, "RIDER").catch(() => null);
-              if (onRead) onRead(order.id);
+              await orderApi.markAsRead(orderId, last.id, "RIDER").catch(() => null);
+              if (onRead) onRead(orderId);
             }
           }
         }
@@ -487,18 +488,19 @@ function RiderChatModal({ order, onClose, onRead }) {
 
     const socket = getSocket("RIDER");
     if (socket) {
-      socket.emit("join_order_room", { orderId: order.id, order_id: order.id });
+      socket.emit("join_order_room", { orderId: Number(orderId) || orderId, order_id: Number(orderId) || orderId });
 
       const handleIncoming = (payload) => {
-        if (Number(payload.order_id || payload.orderId) === Number(order.id)) {
+        const pOrdId = payload.order_id || payload.orderId;
+        if (Number(pOrdId) === Number(orderId) || String(pOrdId) === String(orderId)) {
           setMessages(prev => {
             if (prev.some(m => m.id === payload.id)) return prev;
             return [...prev, payload];
           });
           playOrderChime();
           if (payload.id) {
-            orderApi.markAsRead(order.id, payload.id, "RIDER").catch(() => null);
-            if (onRead) onRead(order.id);
+            orderApi.markAsRead(orderId, payload.id, "RIDER").catch(() => null);
+            if (onRead) onRead(orderId);
           }
         }
       };
@@ -512,7 +514,7 @@ function RiderChatModal({ order, onClose, onRead }) {
         socket.off("NEW_CHAT_MESSAGE", handleIncoming);
       };
     }
-  }, [order?.id, onRead]);
+  }, [orderId, onRead]);
 
   async function handleSend(e) {
     e.preventDefault();
@@ -523,7 +525,7 @@ function RiderChatModal({ order, onClose, onRead }) {
     setSending(true);
 
     try {
-      const res = await orderApi.sendMessage(order.id, content, "RIDER");
+      const res = await orderApi.sendMessage(orderId, content, "RIDER");
       const newMsg = res?.data || (res?.id ? res : null);
       if (newMsg) {
         setMessages(prev => {
@@ -533,7 +535,7 @@ function RiderChatModal({ order, onClose, onRead }) {
       }
     } catch (err) {
       console.error("Rider send message error:", err);
-      alert("ส่งข้อความไม่สำเร็จ");
+      alert("ส่งข้อความไม่สำเร็จ: " + (err?.message || ""));
     } finally {
       setSending(false);
     }

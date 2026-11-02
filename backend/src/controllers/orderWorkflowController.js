@@ -34,15 +34,16 @@ exports.cancelOrder = async (req, res) => {
     const order = await repo.getOrderById(order_id);
 
     if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
-    if (order.customer_id !== req.user.id) return res.status(403).json({ success: false, message: 'Unauthorized' });
+    if (Number(order.customer_id) !== Number(req.user.id)) return res.status(403).json({ success: false, message: 'Unauthorized' });
     
     // ลูกค้ายกเลิกได้เฉพาะตอนรอชำระเงิน (PENDING_PAYMENT หรือ PENDING_ACCEPT) เท่านั้น
     if (!['PENDING_PAYMENT', 'PENDING_ACCEPT'].includes(order.status)) {
       return res.status(400).json({ success: false, message: 'Can only cancel order before payment/preparation' });
     }
 
-    const updated = await repo.updateOrderStatus(order_id, 'CANCELLED_BY_CUSTOMER');
-    emitOrderStatus(req, order_id, 'CANCELLED_BY_CUSTOMER', {}, order.merchant_id, order.customer_id);
+    const numericId = order.id;
+    const updated = await repo.updateOrderStatus(numericId, 'CANCELLED_BY_CUSTOMER');
+    emitOrderStatus(req, numericId, 'CANCELLED_BY_CUSTOMER', {}, order.merchant_id, order.customer_id);
 
     res.status(200).json({ success: true, data: updated[0] });
   } catch (error) {

@@ -14,23 +14,34 @@ const orderItemSchema = z.object({
 const createOrderSchema = z.object({
     merchantId: z.number().int().positive().optional(),
     merchant_id: z.number().int().positive().optional(),
-    dormitoryId: z.number().int().positive().optional(),
-    dormitory_id: z.number().int().positive().optional(),
-    roomNumber: z.string().min(1).optional(),
-    room_number: z.string().min(1).optional(),
+    deliveryType: z.enum(['DELIVERY', 'PICKUP']).optional(),
+    delivery_type: z.enum(['DELIVERY', 'PICKUP']).optional(),
+    dormitoryId: z.number().int().positive().optional().nullable(),
+    dormitory_id: z.number().int().positive().optional().nullable(),
+    roomNumber: z.string().optional().nullable(),
+    room_number: z.string().optional().nullable(),
     items: z.array(orderItemSchema).min(1, 'Order must contain at least 1 item')
 }).refine(data => data.merchantId || data.merchant_id, {
     message: 'merchant_id is required'
-}).refine(data => data.dormitoryId || data.dormitory_id, {
-    message: 'dormitory_id is required'
-}).refine(data => data.roomNumber || data.room_number, {
-    message: 'room_number is required'
-}).transform(data => ({
-    ...data,
-    merchantId: data.merchantId || data.merchant_id,
-    dormitoryId: data.dormitoryId || data.dormitory_id,
-    roomNumber: data.roomNumber || data.room_number
-}));
+}).refine(data => {
+    const isPickup = (data.deliveryType || data.delivery_type) === 'PICKUP' || String(data.roomNumber || data.room_number).includes('รับเอง');
+    if (isPickup) return true;
+    return !!(data.dormitoryId || data.dormitory_id);
+}, {
+    message: 'dormitory_id is required for delivery'
+}).transform(data => {
+    const isPickup = (data.deliveryType || data.delivery_type) === 'PICKUP' || String(data.roomNumber || data.room_number).includes('รับเอง');
+    return {
+        ...data,
+        merchantId: data.merchantId || data.merchant_id,
+        deliveryType: isPickup ? 'PICKUP' : 'DELIVERY',
+        delivery_type: isPickup ? 'PICKUP' : 'DELIVERY',
+        dormitoryId: isPickup ? null : (data.dormitoryId || data.dormitory_id || null),
+        dormitory_id: isPickup ? null : (data.dormitoryId || data.dormitory_id || null),
+        roomNumber: isPickup ? '🛍️ รับเองที่หน้าร้าน (Self Pick-up)' : (data.roomNumber || data.room_number || ''),
+        room_number: isPickup ? '🛍️ รับเองที่หน้าร้าน (Self Pick-up)' : (data.roomNumber || data.room_number || '')
+    };
+});
 
 // การเปลี่ยนสถานะออเดอร์
 const changeOrderStatusSchema = z.object({

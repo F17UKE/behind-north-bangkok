@@ -88,6 +88,7 @@ export default function CustomerPage() {
   const [unreadChatCount, setUnreadChatCount] = useState(0);
 
   const [pendingReturnScreen, setPendingReturnScreen] = useState(null);
+  const [activeCheckoutStore, setActiveCheckoutStore] = useState(null);
   const screenRef = useRef(screen);
   useEffect(() => {
     screenRef.current = screen;
@@ -412,8 +413,8 @@ export default function CustomerPage() {
     }
   }
 
-  // ส่งออเดอร์ไปยัง Backend API
-  async function placeOrder() {
+  // ส่งออเดอร์ไปยัง Backend API (รองรับแยกจ่ายทีละร้าน)
+  async function placeOrder(targetCheckoutStore) {
     const isPickup = deliveryMethod === "PICKUP";
     // 1. ตรวจสอบว่าเข้าสู่ระบบแล้วหรือยัง ถ้ายังให้พาไปหน้า Login ทันที
     if (!authApi.isLoggedIn("CUSTOMER")) {
@@ -425,46 +426,50 @@ export default function CustomerPage() {
 
     // 2. ตรวจสอบว่าได้ระบุที่อยู่จัดส่ง (เฉพาะกรณีเลือกจัดส่ง Delivery)
     if (!isPickup && !hasDeliveryAddress()) {
-
       setApiNotice("📍 กรุณาระบุที่อยู่จัดส่ง (เลือกหอพักและระบุเลขห้อง) ในโปรไฟล์ก่อนทำการสั่งซื้อ");
       setPendingReturnScreen("place");
       setScreen("save-place");
       return;
     }
 
-    const itemsDescription = cart.map((x) => `${x.name}${x.selectedAddons?.length ? ` (${x.selectedAddons.map((option) => option.name).join(", ")})` : ""}${x.note ? ` · หมายเหตุ: ${x.note}` : ""} x${x.qty}`);
-    const dorm = isPickup ? { id: null, name: "รับเองที่ร้าน", soi: "-" } : (savedAddress.dormitory || currentDorm);
-    const room = isPickup ? "🛍️ รับเองที่หน้าร้าน (Self Pick-up)" : savedAddress.roomNumber.trim();
+    // ดึงเฉพาะรายการอาหารของร้านค้าที่กำลังทำการชำระเงิน
+    const itemsToOrder = (targetCheckoutStore?.items && targetCheckoutStore.items.length > 0)
+      ? targetCheckoutStore.items
+      : cart;
 
+    const targetStoreId = targetCheckoutStore?.storeId || itemsToOrder[0]?.storeId || selectedStore?.id || 1;
+    const targetStoreName = targetCheckoutStore?.storeName || itemsToOrder[0]?.storeName || selectedStore?.name || "ร้านอาหาร";
+    const targetSubtotal = targetCheckoutStore ? targetCheckoutStore.subtotal : itemsToOrder.reduce((s, x) => s + x.price * x.qty, 0);
+    const targetFee = isPickup ? 0 : (targetCheckoutStore ? targetCheckoutStore.deliveryFee : currentDeliveryFee);
+    const targetTotal = targetSubtotal + targetFee;
 
-    // เตรียม Local Order สำรอง
+    const itemsDescription = itemsToOrder.map((x) => `${x.name}${x.selectedAddons?.length ? ` (${x.selectedAddons.map((option) => option.name).join(", ")})` : ""}${x.note ? ` · หมายเหตุ: ${x.note}` : ""} x${x.qty}`);
+    const dorm = isPickup ? { id: null, name: "รับเองที่ร้าน", soi: "-" } : (savedAddress?.dormitory || currentDorm);
+    const room = isPickup ? "🛍️ รับเองที่หน้าร้าน (Self Pick-up)" : (savedAddress?.roomNumber ? savedAddress.roomNumber.trim() : "-");
+
     let newOrder = {
       id: `#ORD${String(orders.length + 2).padStart(3, "0")}`,
-      store: cart[0]?.storeName || selectedStore.name || "ตามสั่ง by เชฟเจนนี่",
+      store: targetStoreName,
       items: itemsDescription,
-      total,
+      total: targetTotal,
       status: "PENDING_ACCEPT",
       date: "Today, now",
       qrImage: null,
-      deliveryAddress: isPickup ? "🛍️ รับเองที่หน้าร้าน (Self Pick-up)" : `${dorm.name} ห้อง ${room} (${dorm.soi})`
+      deliveryAddress: isPickup ? "🛍️ รับเองที่หน้าร้าน (Self Pick-up)" : `${dorm?.name || 'หอพัก'} ห้อง ${room} (${dorm?.soi || '-'})`
     };
 
     try {
-      // เรียก Backend API ถ้ามี Token ล็อกอิน
       if (authApi.isLoggedIn("CUSTOMER")) {
         const orderPayload = {
-          merchant_id: Number(selectedStore.id) || 1,
-          merchantId: Number(selectedStore.id) || 1,
+          merchant_id: Number(targetStoreId),
+          merchantId: Number(targetStoreId),
           delivery_type: isPickup ? "PICKUP" : "DELIVERY",
           deliveryType: isPickup ? "PICKUP" : "DELIVERY",
-          dormitory_id: isPickup ? null : (Number(dorm.id) || 1),
-          dormitoryId: isPickup ? null : (Number(dorm.id) || 1),
-          room_number: isPickup ? "🛍️ รับเองที่หน้าร้าน (Self Pick-up)" : `ห้อง ${room} (${dorm.name})`,
-          roomNumber: isPickup ? "🛍️ รับเองที่หน้าร้าน (Self Pick-up)" : `ห้อง ${room} (${dorm.name})`,
-
-
-
-          items: cart.map(item => ({
+          dormitory_id: isPickup ? null : (dorm?.id ? Number(dorm.id) : null),
+          dormitoryId: isPickup ? null : (dorm?.id ? Number(dorm.id) : null),
+          room_number: isPickup ? "🛍️ รับเองที่หน้าร้าน (Self Pick-up)" : `ห้อง ${room} (${dorm?.name || ''})`,
+          roomNumber: isPickup ? "🛍️ รับเองที่หน้าร้าน (Self Pick-up)" : `ห้อง ${room} (${dorm?.name || ''})`,
+          items: itemsToOrder.map(item => ({
             menu_item_id: Number(item.id) || 1,
             quantity: Number(item.qty) || 1,
             note: item.note || undefined,
@@ -484,22 +489,27 @@ export default function CustomerPage() {
           if (respData.total_amount) {
             newOrder.total = parseFloat(respData.total_amount);
           }
-          // รอร้านค้ารับออเดอร์ก่อน ถึงจะสร้างและดึง QR Code PromptPay
           newOrder.status = "PENDING_ACCEPT";
         }
       }
     } catch (apiErr) {
-      console.log("Create order API error, using client mode:", apiErr.message);
+      console.error("Create order API error:", apiErr);
+      alert("ไม่สามารถสั่งซื้ออาหารได้: " + (apiErr?.response?.data?.message || apiErr.message));
+      return;
     }
+
+    // ลบเฉพาะรายการของร้านที่สั่งซื้อออกจากตะกร้า ส่วนรายการร้านอื่นยังคงอยู่
+    const orderedKeys = new Set(itemsToOrder.map(x => x.cartLineId || String(x.id)));
+    setCart((current) => current.filter(x => !orderedKeys.has(x.cartLineId || String(x.id))));
+    setActiveCheckoutStore(null);
 
     setOrders((current) => [newOrder, ...current]);
     setSelectedOrder(newOrder);
-    setCart([]);
     setScreen("delivery");
 
     const socket = getSocket("CUSTOMER");
     if (socket && newOrder.rawId) {
-      socket.emit("join_order_room", { orderId: newOrder.rawId });
+      socket.emit("join_order_room", { orderId: Number(newOrder.rawId), order_id: Number(newOrder.rawId) });
     }
   }
 
@@ -660,7 +670,11 @@ export default function CustomerPage() {
   async function handleCancelOrder(order) {
     if (!confirm("คุณต้องการยกเลิกคำสั่งซื้อนี้ใช่หรือไม่?")) return;
     try {
-      const orderId = order.rawId || 1;
+      const orderId = order.rawId || (order.id ? Number(String(order.id).replace(/\D/g, "")) : null) || order.id;
+      if (!orderId) {
+        alert("ไม่พบรหัสออเดอร์ในระบบ");
+        return;
+      }
       await orderApi.cancelOrder(orderId);
       setApiNotice("✅ ยกเลิกคำสั่งซื้อเรียบร้อยแล้ว");
       const updatedOrder = { ...order, status: "CANCELLED_BY_CUSTOMER" };
@@ -668,7 +682,7 @@ export default function CustomerPage() {
       setOrders(current => current.map(o => (o.id === order.id || o.rawId === order.rawId ? updatedOrder : o)));
       setTimeout(() => setApiNotice(""), 3000);
     } catch (err) {
-      alert("ไม่สามารถยกเลิกคำสั่งซื้อได้: " + err.message);
+      alert("ไม่สามารถยกเลิกคำสั่งซื้อได้: " + (err?.response?.data?.message || err.message));
     }
   }
 
@@ -748,7 +762,7 @@ export default function CustomerPage() {
         {screen === "home" && <CustomerHome search={search} setSearch={setSearch} category={category} setCategory={setCategory} foods={filtered} menu={defaultMenuGallery} featured={heroMenuGallery[heroIndex] || defaultMenuGallery[0]} heroIndex={heroIndex} setHeroIndex={setHeroIndex} heroCount={heroMenuGallery.length || 1} cartCount={cartCount} currentDorm={currentDorm} onOpenDormPicker={() => setShowDormPicker(true)} onStore={openStore} onCart={() => setScreen("basket")} onOrders={() => setScreen("recent")} onProfile={() => setScreen("profile")} />}
         {screen === "store" && <CustomerStore store={selectedStore} cartCount={cartCount} onBack={() => setScreen("home")} onCustomize={openCustomization} onBasket={() => setScreen("basket")} />}
         {screen === "basket" && (
-<Basket
+          <Basket
             deliveryMethod={deliveryMethod}
             setDeliveryMethod={setDeliveryMethod}
             cart={cart}
@@ -768,50 +782,15 @@ export default function CustomerPage() {
               setScreen("save-place");
             }}
             onBack={() => setScreen("store")}
-            onNext={() => {
-              if (!authApi.isLoggedIn("CUSTOMER")) {
-                setApiNotice("🔒 กรุณาเข้าสู่ระบบก่อนดำเนินการสั่งซื้ออาหาร");
-                setPendingReturnScreen("basket");
-                setScreen("login");
-                return;
-              }
-              if (deliveryMethod === "DELIVERY" && !hasDeliveryAddress()) {
-                setApiNotice("📍 กรุณาระบุที่อยู่จัดส่งในโปรไฟล์ก่อนสั่งอาหาร");
-                setPendingReturnScreen("update");
-                setScreen("save-place");
-                return;
-              }
-              setScreen("update");
-            }}
-          />
-        )}
-        {screen === "update" && (
-          <UpdateBasket
-            cart={cart}
-            total={total}
-            savedPlace={savedPlace}
-            setSavedPlace={setSavedPlace}
-            changeQty={changeQty}
-            isLoggedIn={authApi.isLoggedIn("CUSTOMER")}
-            hasAddress={hasDeliveryAddress()}
-            savedAddress={savedAddress}
-            onRequireLogin={() => {
-              setPendingReturnScreen("update");
-              setScreen("login");
-            }}
-            onRequireAddress={() => {
-              setPendingReturnScreen("update");
-              setScreen("save-place");
-            }}
-            onBack={() => setScreen("basket")}
-            onNext={() => {
+            onCheckoutStore={(storeGroup) => {
+              setActiveCheckoutStore(storeGroup);
               if (!authApi.isLoggedIn("CUSTOMER")) {
                 setApiNotice("🔒 กรุณาเข้าสู่ระบบก่อนดำเนินการสั่งซื้ออาหาร");
                 setPendingReturnScreen("place");
                 setScreen("login");
                 return;
               }
-              if (!hasDeliveryAddress()) {
+              if (deliveryMethod === "DELIVERY" && !hasDeliveryAddress()) {
                 setApiNotice("📍 กรุณาระบุที่อยู่จัดส่งในโปรไฟล์ก่อนสั่งอาหาร");
                 setPendingReturnScreen("place");
                 setScreen("save-place");
@@ -822,13 +801,14 @@ export default function CustomerPage() {
           />
         )}
         {screen === "place" && (
-<PlaceOrder
+          <PlaceOrder
             deliveryMethod={deliveryMethod}
             setDeliveryMethod={setDeliveryMethod}
-            cart={cart}
-            subtotal={subtotal}
-            deliveryFee={deliveryFee}
-            total={total}
+            cart={activeCheckoutStore?.items || cart}
+            subtotal={activeCheckoutStore?.subtotal || subtotal}
+            deliveryFee={deliveryMethod === "PICKUP" ? 0 : (activeCheckoutStore?.deliveryFee || deliveryFee)}
+            total={activeCheckoutStore?.total || total}
+            storeName={activeCheckoutStore?.storeName || cart[0]?.storeName}
             isLoggedIn={authApi.isLoggedIn("CUSTOMER")}
             hasAddress={hasDeliveryAddress()}
             savedAddress={savedAddress}
@@ -840,8 +820,8 @@ export default function CustomerPage() {
               setPendingReturnScreen("place");
               setScreen("save-place");
             }}
-            onBack={() => setScreen("update")}
-            onPlace={placeOrder}
+            onBack={() => setScreen("basket")}
+            onPlace={() => placeOrder(activeCheckoutStore)}
           />
         )}
         {screen === "recent" && <Recent orders={orders} onOpen={(order) => { setSelectedOrder(order); setScreen("delivery"); }} onHome={() => setScreen("home")} />}
@@ -1301,7 +1281,35 @@ function CustomizationModal({ item, options, selected, setSelected, note, setNot
   return <div className="customize-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="customize-dialog" role="dialog" aria-modal="true" aria-labelledby="customize-title"><button className="customize-close" onClick={onClose} aria-label="ปิด">×</button><div className="customize-product">{item.image ? <img src={item.image} alt={item.name} /> : <div style={{ width: "64px", height: "64px", borderRadius: "12px", background: "#fff7ed", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "32px", flexShrink: 0 }}>{item.emoji || "🍲"}</div>}<div><small>ปรับแต่งเมนู</small><h2 id="customize-title">{item.name}</h2><span>฿{item.price}</span></div></div><div className="customize-section-heading"><b>เพิ่มความอร่อย</b><small>เลือกได้หลายรายการ</small></div><div className="customize-options">{options.map((option) => <label className="customize-option" key={option.id}><input type="checkbox" checked={selected.includes(option.id)} onChange={() => toggle(option.id)} /><span>{option.name}</span><b>+฿{option.price}</b></label>)}</div><label className="customize-note"><b>หมายเหตุถึงร้าน</b><textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="เช่น ไม่ใส่ผัก เผ็ดน้อย แยกน้ำซอส" maxLength={180} /><small>{note.length}/180</small></label><div className="customize-footer"><div className="qty customize-qty"><button onClick={() => setQty(Math.max(1, qty - 1))}>−</button><span>{qty}</span><button onClick={() => setQty(qty + 1)}>＋</button></div><button className="primary-btn" onClick={onConfirm}>เพิ่มลงตะกร้า · ฿{(item.price + addonsTotal) * qty}</button></div></section></div>;
 }
 
-function Basket({ cart, subtotal, deliveryFee, total, deliveryMethod = "DELIVERY", setDeliveryMethod, changeQty, onBack, onNext, isLoggedIn, hasAddress, savedAddress, onRequireLogin, onRequireAddress }) {
+function Basket({ cart, subtotal, deliveryFee, total, deliveryMethod = "DELIVERY", setDeliveryMethod, changeQty, onBack, onNext, isLoggedIn, hasAddress, savedAddress, onRequireLogin, onRequireAddress, onCheckoutStore }) {
+  const storesInCart = useMemo(() => {
+    const map = new Map();
+    cart.forEach(item => {
+      const sId = item.storeId || 1;
+      const sName = item.storeName || "ร้านอาหาร";
+      if (!map.has(sId)) {
+        map.set(sId, {
+          storeId: sId,
+          storeName: sName,
+          items: [],
+          subtotal: 0,
+          deliveryFee: deliveryMethod === "PICKUP" ? 0 : (deliveryFee || 10),
+          total: 0
+        });
+      }
+      const group = map.get(sId);
+      group.items.push(item);
+      group.subtotal += (item.price || 0) * (item.qty || 1);
+    });
+
+    const list = [];
+    map.forEach(group => {
+      group.total = group.subtotal + (deliveryMethod === "PICKUP" ? 0 : group.deliveryFee);
+      list.push(group);
+    });
+    return list;
+  }, [cart, deliveryMethod, deliveryFee]);
+
   return (
     <>
       <TopBar title="My Cart" onBack={onBack} />
@@ -1398,45 +1406,106 @@ function Basket({ cart, subtotal, deliveryFee, total, deliveryMethod = "DELIVERY
           <button type="button" onClick={onRequireAddress}>แก้ไข</button>
         </div>
       )}
-      <div className="cart-shop">
-        <CartStoreThumb storeId={cart[0]?.storeId} />
-        <div>
-          <b>{cart[0]?.storeName || "เลือกร้านค้า"}</b>
-          <small>Delivery · est. 34 mins</small>
-        </div>
-      </div>
-      {cart.length ? (
-        cart.map((item) => (
-          <div className="cart-row" key={item.cartLineId || item.id}>
-            <div className="food-thumb cart-item-image" style={{ display: "flex", alignItems: "center", justifyContent: "center", background: "#fff7ed", fontSize: "24px" }}>
-              {item.image ? (
-                <img src={item.image} alt={item.name} />
-              ) : (
-                <span>{item.emoji || "🍲"}</span>
-              )}
+
+      {storesInCart.length > 0 ? (
+        storesInCart.map((group) => (
+          <div
+            key={group.storeId}
+            style={{
+              background: "white",
+              borderRadius: "16px",
+              padding: "16px",
+              margin: "0 12px 18px",
+              border: "1px solid #e2e8f0",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.04)"
+            }}
+          >
+            <div className="cart-shop" style={{ display: "flex", alignItems: "center", gap: "10px", paddingBottom: "12px", borderBottom: "1px solid #f1f5f9", marginBottom: "12px" }}>
+              <CartStoreThumb storeId={group.storeId} />
+              <div>
+                <b style={{ fontSize: "15px", color: "#1e293b" }}>{group.storeName}</b>
+                <small style={{ display: "block", color: "#64748b" }}>
+                  {deliveryMethod === "PICKUP" ? "🛍️ รับเองที่หน้าร้าน (0฿)" : "🛵 บริการจัดส่งถึงหอพัก"}
+                </small>
+              </div>
             </div>
-            <div className="cart-row-info">
-              <b>{item.name}</b>
-              {item.selectedAddons?.length > 0 && (
-                <small>เพิ่ม: {item.selectedAddons.map((option) => option.name).join(", ")}</small>
+
+            {group.items.map((item) => (
+              <div className="cart-row" key={item.cartLineId || item.id} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "10px 0", borderBottom: "1px dashed #f1f5f9" }}>
+                <div className="food-thumb cart-item-image" style={{ width: "50px", height: "50px", borderRadius: "10px", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", background: "#fff7ed", fontSize: "24px", flexShrink: 0 }}>
+                  {item.image ? (
+                    <img src={item.image} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  ) : (
+                    <span>{item.emoji || "🍲"}</span>
+                  )}
+                </div>
+                <div className="cart-row-info" style={{ flex: 1, minWidth: 0 }}>
+                  <b style={{ fontSize: "14px", color: "#1e293b", display: "block" }}>{item.name}</b>
+                  {item.selectedAddons?.length > 0 && (
+                    <small style={{ color: "#64748b", display: "block", fontSize: "12px" }}>เพิ่ม: {item.selectedAddons.map((option) => option.name).join(", ")}</small>
+                  )}
+                  {item.note && <small style={{ color: "#f97316", display: "block", fontSize: "12px" }}>หมายเหตุ: {item.note}</small>}
+                  <small style={{ fontWeight: 700, color: "#ea580c", fontSize: "13px" }}>{item.price} ฿</small>
+                </div>
+                <div className="qty" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <button onClick={() => changeQty(item.cartLineId || item.id, -1)} style={{ width: "26px", height: "26px", borderRadius: "50%", border: "1px solid #cbd5e1", background: "white", cursor: "pointer" }}>−</button>
+                  <span style={{ fontWeight: 700, minWidth: "16px", textAlign: "center" }}>{item.qty}</span>
+                  <button onClick={() => changeQty(item.cartLineId || item.id, 1)} style={{ width: "26px", height: "26px", borderRadius: "50%", border: "1px solid #cbd5e1", background: "white", cursor: "pointer" }}>＋</button>
+                </div>
+              </div>
+            ))}
+
+            <div style={{ marginTop: "12px", paddingTop: "8px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", color: "#64748b", marginBottom: "4px" }}>
+                <span>ค่าอาหาร</span>
+                <span>{group.subtotal} ฿</span>
+              </div>
+              {deliveryMethod !== "PICKUP" && (
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", color: "#64748b", marginBottom: "6px" }}>
+                  <span>ค่าจัดส่ง</span>
+                  <span>{group.deliveryFee} ฿</span>
+                </div>
               )}
-              {item.note && <small>หมายเหตุ: {item.note}</small>}
-              <small>{item.price} ฿</small>
-            </div>
-            <div className="qty">
-              <button onClick={() => changeQty(item.cartLineId || item.id, -1)}>−</button>
-              <span>{item.qty}</span>
-              <button onClick={() => changeQty(item.cartLineId || item.id, 1)}>＋</button>
+              <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, fontSize: "15px", color: "#0f172a", marginBottom: "12px" }}>
+                <span>รวมยอดร้านนี้</span>
+                <span style={{ color: "#ea580c" }}>{group.total} ฿</span>
+              </div>
+
+              <button
+                type="button"
+                className="primary-btn"
+                style={{
+                  width: "100%",
+                  padding: "11px 16px",
+                  background: "#ea580c",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "12px",
+                  fontWeight: 700,
+                  fontSize: "14px",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "6px"
+                }}
+                onClick={() => {
+                  if (onCheckoutStore) {
+                    onCheckoutStore(group);
+                  } else {
+                    onNext();
+                  }
+                }}
+              >
+                <span>ชำระเงินร้านนี้ ({group.total} ฿)</span>
+                <span>→</span>
+              </button>
             </div>
           </div>
         ))
       ) : (
         <EmptyState title="Your basket is empty" text="กลับไปที่ร้านเพื่อเลือกเมนู" />
       )}
-      <Summary subtotal={subtotal} delivery={deliveryFee} total={total} />
-      <button className="primary-btn" disabled={!cart.length} onClick={onNext}>
-        ดำเนินการต่อ →
-      </button>
     </>
   );
 }
@@ -1506,7 +1575,7 @@ function UpdateBasket({ cart, total, savedPlace, setSavedPlace, changeQty, onBac
   );
 }
 
-function PlaceOrder({ cart, subtotal, deliveryFee, total, deliveryMethod = "DELIVERY", setDeliveryMethod, onBack, onPlace, isLoggedIn, hasAddress, savedAddress, onRequireLogin, onRequireAddress }) {
+function PlaceOrder({ cart, subtotal, deliveryFee, total, deliveryMethod = "DELIVERY", setDeliveryMethod, onBack, onPlace, isLoggedIn, hasAddress, savedAddress, onRequireLogin, onRequireAddress, storeName }) {
   return (
     <>
       <TopBar title="Order Summary" onBack={onBack} />
@@ -1560,8 +1629,8 @@ function PlaceOrder({ cart, subtotal, deliveryFee, total, deliveryMethod = "DELI
         <div className="cart-shop">
           <CartStoreThumb storeId={cart[0]?.storeId} />
           <div>
-            <b>{cart[0]?.storeName || "เลือกร้านค้า"}</b>
-            <small>Delivery · 34 mins</small>
+            <b>{storeName || cart[0]?.storeName || "เลือกร้านค้า"}</b>
+            <small>{deliveryMethod === "PICKUP" ? "🛍️ รับเองที่หน้าร้าน" : "Delivery · 34 mins"}</small>
           </div>
         </div>
         {cart.map((item) => (
@@ -1582,37 +1651,12 @@ function PlaceOrder({ cart, subtotal, deliveryFee, total, deliveryMethod = "DELI
         <b>Payment method</b>
         <div>◉ PromptPay QR Code <span>›</span></div>
       </div>
-      <button className="primary-btn" onClick={!isLoggedIn ? onRequireLogin : !hasAddress ? onRequireAddress : onPlace}>
-        {!isLoggedIn ? `เข้าสู่ระบบเพื่อสั่งซื้อ · ${total} ฿` : !hasAddress ? `ระบุที่อยู่จัดส่งก่อนสั่ง · ${total} ฿` : `ยืนยันการสั่งซื้อ · ${total} ฿`}
+      <button className="primary-btn" onClick={!isLoggedIn ? onRequireLogin : (deliveryMethod !== "PICKUP" && !hasAddress) ? onRequireAddress : onPlace}>
+        {!isLoggedIn ? `เข้าสู่ระบบเพื่อสั่งซื้อ · ${total} ฿` : (deliveryMethod !== "PICKUP" && !hasAddress) ? `ระบุที่อยู่จัดส่งก่อนสั่ง · ${total} ฿` : `ยืนยันการสั่งซื้อ · ${total} ฿`}
       </button>
     </>
   );
 }
-
-function CartStoreThumb({ storeId }) {
-  const store = customerFoods.find((item) => item.id === storeId);
-  const hasPhoto = store?.photo && (store.photo.startsWith("http://") || store.photo.startsWith("https://"));
-  if (hasPhoto) {
-    return <div className="food-thumb cart-store-image"><img src={store.photo} alt={store?.name || "ร้านอาหาร"} /></div>;
-  }
-  return (
-    <div
-      className="food-thumb cart-store-image"
-      style={{
-        display: "grid",
-        placeItems: "center",
-        fontSize: "20px",
-        background: "linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%)",
-        border: "1px solid #fed7aa",
-        borderRadius: "10px"
-      }}
-    >
-      {store?.emoji || "🍱"}
-    </div>
-  );
-}
-
-function Summary({ subtotal, delivery, total }) { return <div className="summary"><div><span>Subtotal</span><b>{subtotal} ฿</b></div><div><span>Delivery fee</span><b>{delivery} ฿</b></div><hr/><div className="total"><span>Total</span><strong>{total} ฿</strong></div></div>; }
 
 function Recent({ orders, onOpen, onHome }) {
   return (

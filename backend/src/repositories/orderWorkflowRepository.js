@@ -59,7 +59,10 @@ class OrderWorkflowRepository {
 
   // ดึงรายละเอียดออเดอร์แบบเต็ม (Order + Items + Choices + Customer + Store + Dorm)
   async getOrderById(orderId) {
-    const orders = await db('ORDERS')
+    const cleanId = String(orderId).replace(/^#/, '');
+    const numId = Number(cleanId);
+
+    let query = db('ORDERS')
       .leftJoin('CUSTOMERS', 'ORDERS.customer_id', 'CUSTOMERS.id')
       .leftJoin('MERCHANTS', 'ORDERS.merchant_id', 'MERCHANTS.id')
       .leftJoin('DORMITORIES', 'ORDERS.delivery_dormitory_id', 'DORMITORIES.id')
@@ -76,8 +79,39 @@ class OrderWorkflowRepository {
         'SOIS.name as soi_name',
         'MERCHANT_RIDERS.full_name as rider_name',
         'MERCHANT_RIDERS.phone as rider_phone'
-      )
-      .where('ORDERS.id', orderId);
+      );
+
+    if (!isNaN(numId) && numId > 0) {
+      query = query.where('ORDERS.id', numId);
+    } else {
+      query = query.where('ORDERS.order_code', cleanId);
+    }
+
+    let orders = await query;
+    if (!orders || orders.length === 0) {
+      const rawNum = Number(cleanId.replace(/\D/g, ''));
+      if (rawNum > 0) {
+        orders = await db('ORDERS')
+          .leftJoin('CUSTOMERS', 'ORDERS.customer_id', 'CUSTOMERS.id')
+          .leftJoin('MERCHANTS', 'ORDERS.merchant_id', 'MERCHANTS.id')
+          .leftJoin('DORMITORIES', 'ORDERS.delivery_dormitory_id', 'DORMITORIES.id')
+          .leftJoin('SOIS', 'DORMITORIES.soi_id', 'SOIS.id')
+          .leftJoin('MERCHANT_RIDERS', 'ORDERS.rider_id', 'MERCHANT_RIDERS.id')
+          .select(
+            'ORDERS.*',
+            'CUSTOMERS.username as customer_name',
+            'CUSTOMERS.phone as customer_phone',
+            'MERCHANTS.store_name',
+            'MERCHANTS.prefix as store_prefix',
+            'MERCHANTS.promptpay_id',
+            'DORMITORIES.name as dormitory_name',
+            'SOIS.name as soi_name',
+            'MERCHANT_RIDERS.full_name as rider_name',
+            'MERCHANT_RIDERS.phone as rider_phone'
+          )
+          .where('ORDERS.id', rawNum);
+      }
+    }
 
     if (!orders || orders.length === 0) return null;
 

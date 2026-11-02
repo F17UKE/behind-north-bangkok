@@ -3,13 +3,36 @@ const knex = require('../db');
 
 // Helper ตรวจสอบสิทธิ์ว่าผู้ใช้เกี่ยวข้องกับออเดอร์นี้หรือไม่
 const checkOrderAccess = async (orderId, user) => {
-  const order = await knex('ORDERS').where('id', orderId).first();
+  const cleanId = String(orderId).replace(/^#/, '');
+  const numId = Number(cleanId);
+  let order = null;
+
+  if (!isNaN(numId) && numId > 0) {
+    order = await knex('ORDERS').where('id', numId).first();
+  }
+  if (!order) {
+    order = await knex('ORDERS').where('order_code', cleanId).first();
+  }
+  if (!order) {
+    const rawNum = Number(cleanId.replace(/\D/g, ''));
+    if (rawNum > 0) {
+      order = await knex('ORDERS').where('id', rawNum).first();
+    }
+  }
+
   if (!order) return { allowed: false, notFound: true };
 
   if (user.role === 'ADMIN') return { allowed: true, order };
-  if (user.role === 'CUSTOMER' && order.customer_id === user.id) return { allowed: true, order };
-  if (user.role === 'MERCHANT' && order.merchant_id === user.id) return { allowed: true, order };
-  if (user.role === 'RIDER' && (order.rider_id === user.id || user.merchant_id === order.merchant_id)) return { allowed: true, order };
+  if (user.role === 'CUSTOMER' && Number(order.customer_id) === Number(user.id)) return { allowed: true, order };
+  if (user.role === 'MERCHANT' && Number(order.merchant_id) === Number(user.id)) return { allowed: true, order };
+  if (user.role === 'RIDER') {
+    const isAssigned = order.rider_id && Number(order.rider_id) === Number(user.id);
+    const isStoreRider = user.merchant_id && Number(order.merchant_id) === Number(user.merchant_id);
+    const isDeliveryState = ['READY_FOR_DELIVERY', 'IN_DELIVERY', 'COMPLETED'].includes(order.status);
+    if (isAssigned || isStoreRider || isDeliveryState || !order.rider_id) {
+      return { allowed: true, order };
+    }
+  }
 
   return { allowed: false, notFound: false };
 };
@@ -85,7 +108,7 @@ exports.getChatHistory = async (req, res) => {
     if (access.notFound) return res.status(404).json({ error: 'Order not found' });
     if (!access.allowed) return res.status(403).json({ error: 'Unauthorized to access this chat' });
 
-    const messages = await chatRepository.getMessagesByOrderId(order_id);
+    const messages = await chatRepository.getMessagesByOrderId(access.order.id);
     res.status(200).json(messages);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch chat history' });
@@ -104,13 +127,14 @@ exports.updateWatermark = async (req, res) => {
 
     const role = req.user.role; // 'CUSTOMER' หรือ 'MERCHANT'/'RIDER'
 
-    await chatRepository.updateReadWatermark(order_id, role, message_id);
+    const realOrderId = access.order.id;
+    await chatRepository.updateReadWatermark(realOrderId, role, message_id);
 
     // ส่งสัญญาณ Real-time ไปให้คู่สนทนาในห้องทราบว่าอ่านแล้ว
     const io = req.app.get('io');
     if (io) {
-      io.to(`order_${order_id}`).emit('watermark_updated', {
-        orderId: Number(order_id),
+      io.to(`order_${realOrderId}`).emit('watermark_updated', {
+        orderId: Number(realOrderId),
         role,
         messageId: Number(message_id)
       });
@@ -135,6 +159,7 @@ exports.sendMessage = async (req, res) => {
     // กำหนดบทบาทผู้ส่งอย่างปลอดภัยจาก req.user.role
     let isMerchantSender = false;
     let senderSubRole = null;
+    const realOrderId = access.order.id;
 
     if (req.user.role === 'MERCHANT') {
       isMerchantSender = true;
@@ -142,6 +167,10 @@ exports.sendMessage = async (req, res) => {
     } else if (req.user.role === 'RIDER') {
       isMerchantSender = true;
       senderSubRole = 'RIDER';
+      if (!access.order.rider_id) {
+        await knex('ORDERS').where('id', realOrderId).update({ rider_id: req.user.id });
+        access.order.rider_id = req.user.id;
+      }
     }
 
     const newMessage = await chatRepository.saveMessage({
@@ -150,7 +179,7 @@ exports.sendMessage = async (req, res) => {
       messageType: messageType || 'TEXT',
       contentText: contentText,
       callDurationSeconds: callDurationSeconds || 0,
-      orderId: order_id
+      orderId: realOrderId
     });
 
     // ส่ง Socket.io กระจายข้อความไปในห้อง และส่ง Notification ไปยังผู้รับ
@@ -158,11 +187,11 @@ exports.sendMessage = async (req, res) => {
     if (io) {
       const messagePayload = {
         ...newMessage,
-        orderId: Number(order_id),
-        order_id: Number(order_id),
+        orderId: Number(realOrderId),
+        order_id: Number(realOrderId),
         role: senderSubRole || (isMerchantSender ? 'STORE' : 'CUSTOMER')
       };
-      io.to(`order_${order_id}`).emit('new_message', messagePayload);
+      io.to(`order_${realOrderId}`).emit('new_message', messagePayload);
       // ส่งการแจ้งเตือนเฉพาะผู้รับ (ไม่ส่งเตือนกลับไปยังผู้ที่เพิ่งพิมพ์ข้อความ)
       if (access.order?.merchant_id && req.user.role !== 'MERCHANT') {
         io.to(`merchant_${access.order.merchant_id}`).emit('NEW_CHAT_MESSAGE', messagePayload);
