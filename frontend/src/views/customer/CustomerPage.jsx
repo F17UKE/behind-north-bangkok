@@ -413,7 +413,7 @@ export default function CustomerPage() {
     if (optionGroups.length > 0) {
       optionGroups.forEach(grp => {
         (grp.choices || []).forEach(ch => {
-          if (customAddons.includes(ch.id) || customAddons.includes(String(ch.id))) {
+          if (customAddons.includes(ch.id) || customAddons.includes(String(ch.id)) || customAddons.includes(Number(ch.id))) {
             const addPrice = parseFloat(ch.extra_price || ch.price || 0);
             selected.push({
               id: ch.id,
@@ -514,12 +514,23 @@ export default function CustomerPage() {
           dormitoryId: isPickup ? null : (dorm?.id ? Number(dorm.id) : null),
           room_number: isPickup ? "🛍️ รับเองที่หน้าร้าน (Self Pick-up)" : `ห้อง ${room} (${dorm?.name || ''})`,
           roomNumber: isPickup ? "🛍️ รับเองที่หน้าร้าน (Self Pick-up)" : `ห้อง ${room} (${dorm?.name || ''})`,
-          items: itemsToOrder.map(item => ({
-            menu_item_id: Number(item.id) || 1,
-            quantity: Number(item.qty) || 1,
-            note: item.note || undefined,
-            choices: []
-          }))
+          items: itemsToOrder.map(item => {
+            const choiceIds = (item.selectedAddons || [])
+              .map(addon => {
+                if (typeof addon === 'object' && addon !== null) {
+                  return Number(addon.id);
+                }
+                return Number(addon);
+              })
+              .filter(id => !isNaN(id) && id > 0);
+
+            return {
+              menu_item_id: Number(item.id) || 1,
+              quantity: Number(item.qty) || 1,
+              note: item.note || undefined,
+              choices: choiceIds
+            };
+          })
         };
 
         const serverRes = await orderApi.createOrder(orderPayload);

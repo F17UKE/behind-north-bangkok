@@ -76,15 +76,17 @@ const createOrder = async (orderData) => {
             if (item.choices && item.choices.length > 0) {
                 for (const choiceId of item.choices) {
                     const choice = await trx('MENU_OPTION_CHOICES').where('id', choiceId).first();
-                    const extraPrice = parseFloat(choice.extra_price);
-                    itemTotal += (extraPrice * item.quantity);
+                    if (choice) {
+                        const extraPrice = parseFloat(choice.extra_price || 0) || 0;
+                        itemTotal += (extraPrice * item.quantity);
 
-                    await trx('ORDER_ITEM_CHOICES').insert({
-                        order_item_id: orderItem.id,
-                        menu_option_choice_id: choiceId,
-                        choice_name: choice.name,
-                        extra_price: extraPrice
-                    });
+                        await trx('ORDER_ITEM_CHOICES').insert({
+                            order_item_id: orderItem.id,
+                            menu_option_choice_id: choice.id,
+                            choice_name: choice.name,
+                            extra_price: extraPrice
+                        });
+                    }
                 }
             }
             totalAmount += itemTotal;
